@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  height: 100%;
+}
+
+body {
+  @apply m-0 min-h-screen bg-white text-slate-900 antialiased;
+  font-family: Inter, "Segoe UI", sans-serif;
+}
+
+.leaflet-container {
+  font: inherit;
+  background: #dbe4ea;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+  @apply bg-white text-slate-900 shadow-lg;
+}
+
+.leaflet-popup-content {
+  @apply m-0 text-sm;
+}
+
+.marker-cluster-small,
+.marker-cluster-medium,
+.marker-cluster-large {
+  background: rgb(51 65 85 / 0.28);
+}
+
+.marker-cluster-small div,
+.marker-cluster-medium div,
+.marker-cluster-large div {
+  background: rgb(15 23 42 / 0.82);
+  color: white;
+  font-weight: 700;
+}
+
+.leaflet-left {
+  right: 0;
+}
+
+.leaflet-top {
+  bottom: 0;
+}
+
+.map-marker {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 9999px;
+  border: 3px solid #fff;
+  box-shadow: 0 6px 16px rgb(15 23 42 / 0.22);
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.map-marker.is-badestelle {
+  background: #0f766e;
+}
+
+.map-marker.is-poi {
+  background: #1d4ed8;
+}
+
+.map-marker.is-active {
+  transform: scale(1.22);
+  background: #111827;
+}
