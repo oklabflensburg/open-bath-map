@@ -6,6 +6,6 @@
     "dev:frontend": "pnpm --dir frontend dev",
     "build:frontend": "pnpm --dir frontend build",
     "preview:frontend": "pnpm --dir frontend preview",
-    "generate:sitemap": "backend/.venv/bin/python scripts/generate_sitemap.py"
+    "generate:sitemap": "backend/venv/bin/python scripts/generate_sitemap.py"
   }
 }
