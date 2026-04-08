@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.models.map_item import MapFeatureCollection, MapItem
+from app.models.map_item import MapFeatureCollection, MapItem, MapItemSearchResponse
 from app.services.opendata import OpenDataService
 
 router = APIRouter(prefix="/api/map/v1", tags=["map"])
@@ -62,3 +62,19 @@ async def get_item_details(
     if item is None:
         raise HTTPException(status_code=404, detail="Map item not found")
     return item
+
+
+@router.get("/search", response_model=MapItemSearchResponse)
+async def search_items(
+    q: str = Query(min_length=2),
+    item_type: str | None = Query(default=None, alias="type"),
+    category: str | None = None,
+    limit: int = Query(default=20, ge=1, le=100),
+    service: OpenDataService = Depends(get_service),
+) -> MapItemSearchResponse:
+    return await service.search_map_items(
+        q=q,
+        item_type=item_type,
+        category=category,
+        limit=limit,
+    )

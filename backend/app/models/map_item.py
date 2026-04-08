@@ -72,3 +72,8 @@ class MapFeatureCollection(ApiModel):
     features: list[MapFeature] = Field(default_factory=list)
     filters: MapFilters = Field(default_factory=MapFilters)
     total: int = 0
+
+
+class MapItemSearchResponse(ApiModel):
+    items: list[MapItem] = Field(default_factory=list)
+    total: int = 0

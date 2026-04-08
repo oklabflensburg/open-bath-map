@@ -2,7 +2,7 @@ import { useState } from '#imports'
 import type { FilterState, MapBounds, MapFeature, MapFilterOptions, MapItem, UserLocation } from '../types/map'
 
 const defaultFilters = (): FilterState => ({
-  type: 'all',
+  type: 'badestelle',
   category: '',
   infrastructure: '',
 })

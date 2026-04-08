@@ -6,7 +6,7 @@ Interaktive Open-Data-Kartenanwendung für Badestellen und wassernahe POIs in Sc
 
 ## Überblick
 
-Open Bath Map kombiniert ein Nuxt-3-Frontend mit einem FastAPI-Backend. Die Anwendung lädt offene Badegewässer-Daten des Landes Schleswig-Holstein, normalisiert sie serverseitig und stellt sie über eine gemeinsame Karten-API für eine interaktive Leaflet-Karte bereit. Zusätzlich können lokale POIs aus einer JSON-Datei eingebunden werden.
+Open Bath Map kombiniert ein Nuxt-3-Frontend mit einem FastAPI-Backend. Die Anwendung lädt offene Badegewässer-Daten des Landes Schleswig-Holstein, normalisiert sie serverseitig und stellt sie über eine gemeinsame Karten-API für eine interaktive Leaflet-Karte bereit. Ergänzend werden wassernahe touristische POIs aus dem Open-Data-Portal Schleswig-Holstein eingebunden.
 
 Die Karte ist auf eine schnelle, kartenzentrierte Nutzung ausgelegt:
 
@@ -19,7 +19,7 @@ Die Karte ist auf eine schnelle, kartenzentrierte Nutzung ausgelegt:
 
 - Frontend: Nuxt 3, Vue 3, TypeScript, Tailwind CSS, Leaflet, `leaflet.markercluster`
 - Backend: FastAPI, Pydantic, `httpx`, `pydantic-settings`
-- Datenquellen: CKAN/Open-Data-Portal Schleswig-Holstein plus lokale POI-Datei
+- Datenquellen: CKAN/Open-Data-Portal Schleswig-Holstein für Badegewässer und touristische POIs
 - Auslieferung: SSR-fähiges Nuxt-Frontend, JSON-Datei-Cache im Backend, PWA-Manifest und Service Worker
 
 ## Kernfunktionen
@@ -79,7 +79,7 @@ Das Backend verwendet zwei Hauptmodelle:
 - [`BathingSite`](./backend/app/models/bathing_site.py) für die rohe bzw. fachliche Sicht auf Badegewässer
 - [`MapItem`](./backend/app/models/map_item.py) für die vereinheitlichte Darstellung auf der Karte
 
-Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs kommen aus [`backend/app/data/pois.json`](./backend/app/data/pois.json). Beide Typen werden in der Karten-API zu einem gemeinsamen Format zusammengeführt.
+Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs werden aus dem Datensatz `POI der Touristischen Landesdatenbank` der Tourismus Agentur Schleswig-Holstein abgeleitet und in der Karten-API mit den Badestellen zusammengeführt.
 
 ## Datenfluss
 
@@ -208,6 +208,12 @@ source .venv/bin/activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+PostgreSQL-Sync für produktive API-Nutzung mit Persistenz und Volltextsuche:
+
+```bash
+pnpm sync:postgres
+```
+
 ## Umgebungsvariablen
 
 ### Frontend
@@ -234,6 +240,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 | `BACKEND_CORS_ORIGINS` | Kommaseparierte Liste erlaubter Origins |
 | `CACHE_TTL_MINUTES` | Gültigkeit des Datei-Caches in Minuten |
 | `REQUEST_TIMEOUT_SECONDS` | Timeout für Requests auf externe Datenquellen |
+| `DATABASE_URL` | Optionale PostgreSQL-Verbindung; wenn gesetzt, liest die API primär aus der Datenbank |
 
 ## API-Überblick
 
@@ -319,6 +326,17 @@ Query:
 - `id`
 - oder `slug`
 
+### `GET /api/map/v1/search`
+
+Volltextsuche über PostgreSQL, wenn `DATABASE_URL` gesetzt ist. Ohne PostgreSQL greift ein einfacher Text-Fallback.
+
+Query:
+
+- `q`
+- `type=badestelle|poi`
+- `category`
+- `limit`
+
 ## Karten- und UI-Verhalten
 
 - Leaflet wird ausschließlich clientseitig initialisiert.
@@ -352,7 +370,8 @@ Impressum und Datenschutz beziehen ihre Kontakt- und Adressdaten aus den öffent
 - Slugs für Badestellen werden aus Region, lesbarem Namen, optionalem Ort und der Original-ID aufgebaut.
 - Infrastrukturdaten werden sowohl für allgemeine Amenities als auch für eine heuristische Accessibility-Ableitung verwendet.
 - Die Karten-API liefert Filteroptionen direkt mit aus, damit das Frontend keine zusätzliche Metadaten-API benötigt.
-- POIs sind derzeit statisch in JSON hinterlegt und werden mit den Badestellen zusammen ausgeliefert.
+- POIs werden aus dem TA.SH-Datensatz `POI der Touristischen Landesdatenbank` geladen und heuristisch auf wassernahe Einträge gefiltert.
+- Mit gesetzter `DATABASE_URL` werden Badestellen und Kartenobjekte in PostgreSQL persistiert; `pnpm sync:postgres` baut den Datenbestand neu auf.
 
 ## Entwicklungsnotizen
 
@@ -363,6 +382,6 @@ Impressum und Datenschutz beziehen ihre Kontakt- und Adressdaten aus den öffent
 ## Bekannte Grenzen
 
 - Es gibt derzeit keine automatisierten Tests im Repository.
-- POIs werden nicht aus einer externen Quelle synchronisiert, sondern aus einer lokalen JSON-Datei gelesen.
+- Die wassernahe Relevanz der touristischen POIs wird aktuell über Heuristiken auf Basis von Titel- und Beschreibungstexten abgeleitet; das ist fachlich besser als eine lokale JSON-Datei, aber noch kein kuratierter Themenfeed.
 - Die Tile-Auslieferung ist an die Verfügbarkeit des konfigurierten OSM-Servers gebunden.
 - Der Service Worker ist bewusst schlank gehalten und enthält keine komplexe Offline-Synchronisation oder Hintergrundaktualisierung.

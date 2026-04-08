@@ -20,10 +20,6 @@
         {{ fetchError }}
       </p>
 
-      <p v-if="isLoading" class="mt-4 text-sm text-slate-500">
-        Kartendaten werden geladen.
-      </p>
-
       <div class="mt-6">
         <MapIntro v-if="!item" />
 
@@ -38,7 +34,7 @@
             <div class="mb-3 flex items-start justify-between gap-4">
               <div>
                 <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {{ labelForType(item.type) }}<span v-if="item.category"> · {{ item.category }}</span>
+                  {{ labelForType(item.type) }}
                 </p>
                 <h2 class="mt-1 text-2xl font-bold leading-tight text-slate-900">{{ item.title }}</h2>
               </div>

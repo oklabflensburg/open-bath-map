@@ -3,10 +3,16 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+ROOT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
+BACKEND_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=("../.env"), env_file_encoding="utf-8", extra="ignore")
+        env_file=(ROOT_ENV_PATH, BACKEND_ENV_PATH),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
     app_name: str = "Open Bath Map API"
     backend_host: str = "127.0.0.1"
@@ -15,6 +21,7 @@ class Settings(BaseSettings):
     cache_ttl_minutes: int = 360
     request_timeout_seconds: int = 30
     cache_dir: Path = Path("cache")
+    database_url: str | None = None
 
     @property
     def cors_origins(self) -> list[str]:

@@ -68,8 +68,12 @@ function resetSelectedMarker() {
   }
 
   const feature = selectedMarker.feature as MapFeature | undefined
-  if (feature && selectedMarker._map && selectedMarker._icon) {
-    selectedMarker.setIcon(createMarkerIcon(feature.properties.type, false))
+  if (feature && selectedMarker._map && selectedMarker._icon?.parentNode) {
+    try {
+      selectedMarker.setIcon(createMarkerIcon(feature.properties.type, false))
+    } catch {
+      // MarkerCluster/Leaflet can briefly hold stale marker DOM during fast updates.
+    }
   }
   selectedMarker = null
 }
@@ -81,21 +85,29 @@ function setSelectedMarker(marker: any) {
 
   resetSelectedMarker()
   const feature = marker.feature as MapFeature
-  if (feature && marker._map && marker._icon) {
-    marker.setIcon(createMarkerIcon(feature.properties.type, true))
+  if (feature && marker._map && marker._icon?.parentNode) {
+    try {
+      marker.setIcon(createMarkerIcon(feature.properties.type, true))
+    } catch {
+      return
+    }
   }
   selectedMarker = marker
 }
 
 function syncMarkers() {
-  if (!LRef || !clusterGroup) {
+  if (!LRef || !map) {
     return
   }
 
   map?.stop?.()
   resetSelectedMarker()
   markerIndex.clear()
-  clusterGroup.clearLayers()
+  if (clusterGroup) {
+    map.removeLayer(clusterGroup)
+  }
+  clusterGroup = createClusterGroup()
+  map.addLayer(clusterGroup)
 
   props.features.forEach((feature) => {
     const [lng, lat] = feature.geometry.coordinates
@@ -115,6 +127,17 @@ function syncMarkers() {
     if (feature.id === props.selectedItemId) {
       selectedMarker = marker
     }
+  })
+}
+
+function createClusterGroup() {
+  return LRef!.markerClusterGroup({
+    zoomToBoundsOnClick: true,
+    showCoverageOnHover: false,
+    disableClusteringAtZoom: 14,
+    maxClusterRadius: 48,
+    animate: false,
+    animateAddingMarkers: false,
   })
 }
 
@@ -202,12 +225,7 @@ async function initializeMap() {
       '© OpenStreetMap-Mitwirkende | Badestellen-Daten: <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a> (Sozialministerium S-H)',
   }).addTo(map)
 
-  clusterGroup = leaflet.markerClusterGroup({
-    zoomToBoundsOnClick: true,
-    showCoverageOnHover: false,
-    disableClusteringAtZoom: 14,
-    maxClusterRadius: 48,
-  })
+  clusterGroup = createClusterGroup()
 
   map.addLayer(clusterGroup)
   map.on('moveend', emitBounds)

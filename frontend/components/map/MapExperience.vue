@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { useHead, useRoute, useRuntimeConfig, useSeoMeta } from '#imports'
+import { useHead, useRuntimeConfig, useSeoMeta } from '#imports'
 import type { FilterState, MapBounds, MapItem, UserLocation } from '../../types/map'
 import { buildMetaDescription, buildMetaTitle } from '../../utils/formatters'
 
@@ -65,7 +65,6 @@ const { loadBounds, loadRadius } = useMapData()
 const { closeSelection, selectById } = useMapSelection()
 const { isLocating, locationError, requestLocation } = useGeolocation()
 const config = useRuntimeConfig()
-const route = useRoute()
 const mapViewRef = ref<{
   focusItem: (item: MapItem, zoom?: number) => void
   centerOnLocation: (location: UserLocation, zoom?: number) => void
@@ -74,7 +73,7 @@ const didInitialBoundsLoad = ref(false)
 const isMapReady = ref(false)
 
 const canonicalUrl = computed(() => {
-  const path = route.fullPath === '/' ? '' : route.fullPath
+  const path = state.selectedSlug.value ? `/${state.selectedSlug.value}` : ''
   return `${config.public.siteUrl}${path}`
 })
 
