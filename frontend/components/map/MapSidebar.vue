@@ -90,6 +90,10 @@
         </article>
       </div>
     </div>
+
+    <div class="border-t border-slate-300 px-6 py-4">
+      <SiteLegalLinks />
+    </div>
   </aside>
 </template>
 

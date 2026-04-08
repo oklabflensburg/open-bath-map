@@ -17,7 +17,7 @@
       <div
         v-show="isOpen"
         ref="contentElement"
-        class="flex-1 overflow-y-auto px-4 pb-6"
+        class="flex-1 overflow-y-auto px-4 pb-24"
       >
         <div class="mb-4">
           <MapFilters

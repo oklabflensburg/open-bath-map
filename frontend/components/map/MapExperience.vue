@@ -30,6 +30,12 @@
       @update:filters="handleFiltersUpdate"
     />
 
+    <div class="pointer-events-none fixed inset-x-0 bottom-4 z-[1200] flex justify-center px-4 md:hidden">
+      <div class="pointer-events-auto rounded-full border border-slate-200 bg-white/95 px-4 py-2 shadow-lg backdrop-blur">
+        <SiteLegalLinks />
+      </div>
+    </div>
+
     <MapBottomSheet
       :fetch-error="state.fetchError.value"
       :filters="state.filters.value"

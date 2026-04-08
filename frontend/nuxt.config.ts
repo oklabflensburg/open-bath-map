@@ -22,6 +22,14 @@ export default defineNuxtConfig({
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE,
       siteUrl: process.env.NUXT_PUBLIC_SITE_URL,
+      contactMail: process.env.NUXT_PUBLIC_CONTACT_MAIL,
+      contactPhone: process.env.NUXT_PUBLIC_CONTACT_PHONE,
+      privacyContactPerson: process.env.NUXT_PUBLIC_PRIVACY_CONTACT_PERSON,
+      addressName: process.env.NUXT_PUBLIC_ADDRESS_NAME,
+      addressStreet: process.env.NUXT_PUBLIC_ADDRESS_STREET,
+      addressHouseNumber: process.env.NUXT_PUBLIC_ADDRESS_HOUSE_NUMBER,
+      addressPostalCode: process.env.NUXT_PUBLIC_ADDRESS_POSTAL_CODE,
+      addressCity: process.env.NUXT_PUBLIC_ADDRESS_CITY,
     },
   },
   app: {
