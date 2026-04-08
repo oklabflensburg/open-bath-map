@@ -1,0 +1,30 @@
+{
+  "id": "/",
+  "name": "Badestellenkarte Schleswig-Holstein",
+  "short_name": "Badestellen",
+  "description": "Interaktive Karte für Badestellen und wassernahe POIs in Schleswig-Holstein.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111827",
+  "lang": "de-DE",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/icons/icon-512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
