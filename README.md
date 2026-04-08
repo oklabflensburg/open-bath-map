@@ -38,31 +38,31 @@ Die Karte ist auf eine schnelle, kartenzentrierte Nutzung ausgelegt:
 
 ### Frontend
 
-Das Frontend ist ein Nuxt-3-Projekt unter [`frontend`](/home/awendelk/git/open-bath-map/frontend). Die eigentliche Kartenlogik liegt in [`MapExperience.vue`](/home/awendelk/git/open-bath-map/frontend/components/map/MapExperience.vue). Diese Komponente verbindet:
+Das Frontend ist ein Nuxt-3-Projekt unter [`frontend`](./frontend). Die eigentliche Kartenlogik liegt in [`MapExperience.vue`](./frontend/components/map/MapExperience.vue). Diese Komponente verbindet:
 
-- Kartenansicht über [`MapView.vue`](/home/awendelk/git/open-bath-map/frontend/components/map/MapView.vue)
-- Desktop-Detailbereich über [`MapSidebar.vue`](/home/awendelk/git/open-bath-map/frontend/components/map/MapSidebar.vue)
-- Mobile Interaktion über [`MapBottomSheet.vue`](/home/awendelk/git/open-bath-map/frontend/components/map/MapBottomSheet.vue)
+- Kartenansicht über [`MapView.vue`](./frontend/components/map/MapView.vue)
+- Desktop-Detailbereich über [`MapSidebar.vue`](./frontend/components/map/MapSidebar.vue)
+- Mobile Interaktion über [`MapBottomSheet.vue`](./frontend/components/map/MapBottomSheet.vue)
 - Filter- und Auswahlzustand über die Composables
 
 Zentrale Frontend-Bausteine:
 
-- [`useMapState.ts`](/home/awendelk/git/open-bath-map/frontend/composables/useMapState.ts): globaler Karten-, Filter- und UI-Zustand über Nuxt `useState`
-- [`useMapData.ts`](/home/awendelk/git/open-bath-map/frontend/composables/useMapData.ts): Marker- und Detailabfragen, Request-Sequencing gegen Race Conditions
-- [`useMapSelection.ts`](/home/awendelk/git/open-bath-map/frontend/composables/useMapSelection.ts): Synchronisierung zwischen Auswahlzustand und slug-basierter Route
-- [`useGeolocation.ts`](/home/awendelk/git/open-bath-map/frontend/composables/useGeolocation.ts): Browser-Geolocation mit Fehlerbehandlung
+- [`useMapState.ts`](./frontend/composables/useMapState.ts): globaler Karten-, Filter- und UI-Zustand über Nuxt `useState`
+- [`useMapData.ts`](./frontend/composables/useMapData.ts): Marker- und Detailabfragen, Request-Sequencing gegen Race Conditions
+- [`useMapSelection.ts`](./frontend/composables/useMapSelection.ts): Synchronisierung zwischen Auswahlzustand und slug-basierter Route
+- [`useGeolocation.ts`](./frontend/composables/useGeolocation.ts): Browser-Geolocation mit Fehlerbehandlung
 
-Die Route [`frontend/pages/[[slug]].vue`](/home/awendelk/git/open-bath-map/frontend/pages/[[slug]].vue) lädt Detaildaten bereits serverseitig vor, damit Meta-Titel und Meta-Beschreibung auch auf Detailseiten korrekt gesetzt werden.
+Die Route [`frontend/pages/[[slug]].vue`](./frontend/pages/[[slug]].vue) lädt Detaildaten bereits serverseitig vor, damit Meta-Titel und Meta-Beschreibung auch auf Detailseiten korrekt gesetzt werden.
 
 ### Backend
 
-Das Backend lebt unter [`backend`](/home/awendelk/git/open-bath-map/backend) und stellt drei API-Bereiche bereit:
+Das Backend lebt unter [`backend`](./backend) und stellt drei API-Bereiche bereit:
 
-- [`/api/health`](/home/awendelk/git/open-bath-map/backend/app/api/routes/health.py)
-- [`/api/bathing-sites`](/home/awendelk/git/open-bath-map/backend/app/api/routes/bathing_sites.py)
-- [`/api/map/v1`](/home/awendelk/git/open-bath-map/backend/app/api/routes/map.py)
+- [`/api/health`](./backend/app/api/routes/health.py)
+- [`/api/bathing-sites`](./backend/app/api/routes/bathing_sites.py)
+- [`/api/map/v1`](./backend/app/api/routes/map.py)
 
-Die zentrale Fachlogik steckt in [`opendata.py`](/home/awendelk/git/open-bath-map/backend/app/services/opendata.py). Der Service übernimmt:
+Die zentrale Fachlogik steckt in [`opendata.py`](./backend/app/services/opendata.py). Der Service übernimmt:
 
 - Discovery der CSV-Quellen über die CKAN-API
 - Fallback auf bekannte direkte EFI-CSV-URLs
@@ -76,10 +76,10 @@ Die zentrale Fachlogik steckt in [`opendata.py`](/home/awendelk/git/open-bath-ma
 
 Das Backend verwendet zwei Hauptmodelle:
 
-- [`BathingSite`](/home/awendelk/git/open-bath-map/backend/app/models/bathing_site.py) für die rohe bzw. fachliche Sicht auf Badegewässer
-- [`MapItem`](/home/awendelk/git/open-bath-map/backend/app/models/map_item.py) für die vereinheitlichte Darstellung auf der Karte
+- [`BathingSite`](./backend/app/models/bathing_site.py) für die rohe bzw. fachliche Sicht auf Badegewässer
+- [`MapItem`](./backend/app/models/map_item.py) für die vereinheitlichte Darstellung auf der Karte
 
-Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs kommen aus [`backend/app/data/pois.json`](/home/awendelk/git/open-bath-map/backend/app/data/pois.json). Beide Typen werden in der Karten-API zu einem gemeinsamen Format zusammengeführt.
+Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs kommen aus [`backend/app/data/pois.json`](./backend/app/data/pois.json). Beide Typen werden in der Karten-API zu einem gemeinsamen Format zusammengeführt.
 
 ## Datenfluss
 
@@ -333,9 +333,9 @@ Query:
 
 Die Anwendung enthält eine klassische PWA-Basis:
 
-- Web App Manifest unter [`frontend/public/site.webmanifest`](/home/awendelk/git/open-bath-map/frontend/public/site.webmanifest)
-- Service Worker unter [`frontend/public/sw.js`](/home/awendelk/git/open-bath-map/frontend/public/sw.js)
-- Homescreen- und App-Icons unter [`frontend/public/icons`](/home/awendelk/git/open-bath-map/frontend/public/icons)
+- Web App Manifest unter [`frontend/public/site.webmanifest`](./frontend/public/site.webmanifest)
+- Service Worker unter [`frontend/public/sw.js`](./frontend/public/sw.js)
+- Homescreen- und App-Icons unter [`frontend/public/icons`](./frontend/public/icons)
 
 Der Service Worker cached App-Shell und Laufzeit-Assets. Die installierbare PWA ist damit für die Anwendung selbst vorbereitet. Vollständige Offline-Kartennutzung hängt zusätzlich davon ab, ob die benötigten Tile-Requests erreichbar oder bereits gecached sind.
 
@@ -343,8 +343,8 @@ Der Service Worker cached App-Shell und Laufzeit-Assets. Die installierbare PWA 
 
 Impressum und Datenschutz beziehen ihre Kontakt- und Adressdaten aus den öffentlichen Nuxt-Runtime-Config-Werten. Die rechtlichen Seiten liegen unter:
 
-- [`frontend/pages/impressum.vue`](/home/awendelk/git/open-bath-map/frontend/pages/impressum.vue)
-- [`frontend/pages/datenschutz.vue`](/home/awendelk/git/open-bath-map/frontend/pages/datenschutz.vue)
+- [`frontend/pages/impressum.vue`](./frontend/pages/impressum.vue)
+- [`frontend/pages/datenschutz.vue`](./frontend/pages/datenschutz.vue)
 
 ## Besondere technische Details
 
