@@ -123,6 +123,10 @@ watch(() => state.filters.value, async () => {
     return
   }
 
+  if (state.searchQuery.value.trim().length >= 2) {
+    return
+  }
+
   await reloadForCurrentMode()
 }, { deep: true })
 
@@ -158,6 +162,10 @@ onBeforeUnmount(() => {
 
 async function handleBoundsChange(bounds: MapBounds) {
   didInitialBoundsLoad.value = true
+  state.currentBounds.value = bounds
+  if (state.searchQuery.value.trim().length >= 2) {
+    return
+  }
   await loadBounds(bounds)
 }
 
@@ -210,6 +218,7 @@ async function handleSearchResultSelect(id: string) {
 function clearSearchQuery() {
   state.searchQuery.value = ''
   clearSearch()
+  void reloadForCurrentMode()
 }
 
 function resetFilters() {

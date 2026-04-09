@@ -249,6 +249,7 @@ class OpenDataService:
 
         items = await self._get_map_items(item_type=item_type, category=category, infrastructure=infrastructure)
         query = self._normalize_search_text(q)
+        query_terms = [term for term in query.split(" ") if term]
         matches = []
         for item in items:
             haystack = self._normalize_search_text(
@@ -270,7 +271,11 @@ class OpenDataService:
             if query in haystack:
                 matches.append(item)
                 continue
-            if any(self._is_fuzzy_match(query, token) for token in haystack.split()):
+            haystack_tokens = haystack.split()
+            if query_terms and all(
+                term in haystack or any(self._is_fuzzy_match(term, token) for token in haystack_tokens)
+                for term in query_terms
+            ):
                 matches.append(item)
         return MapItemSearchResponse(items=matches[:limit], total=len(matches))
 

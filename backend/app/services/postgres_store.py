@@ -292,6 +292,7 @@ class PostgresStore:
         limit: int,
     ) -> MapItemSearchResponse:
         normalized_query = self._normalize_search_text(q)
+        search_terms = self._search_terms(q)
         base_where: list[str] = []
         params: list[Any] = []
         if item_type in {"badestelle", "poi"}:
@@ -303,25 +304,34 @@ class PostgresStore:
         if infrastructure:
             base_where.append("(%s = ANY(amenities) OR accessibility = %s)")
             params.extend([infrastructure, infrastructure])
-        search_predicate = (
-            f"{self._search_vector_sql()} @@ websearch_to_tsquery('german', %s) "
-            f"OR {self._normalized_search_sql()} LIKE '%%' || %s || '%%' "
-            f"OR {self._normalized_search_sql()} %% %s "
-            f"OR word_similarity(%s, {self._normalized_search_sql()}) >= 0.5"
-        )
-        where = [*base_where, f"({search_predicate})"]
+        where = [*base_where]
+        query_params: list[Any] = []
+        if search_terms:
+            where.append(f"{self._search_vector_sql()} @@ plainto_tsquery('german', %s)")
+            query_params.append(q)
+            term_predicates: list[str] = []
+            for _term in search_terms:
+                term_predicates.append(
+                    "("
+                    f"{self._normalized_search_sql()} LIKE '%%' || %s || '%%' "
+                    f"OR word_similarity(%s, {self._normalized_search_sql()}) >= 0.6"
+                    ")"
+                )
+            where.append(" AND ".join(term_predicates))
+            for term in search_terms:
+                query_params.extend([term, term])
         rows = await self._fetch_all(
             f"""
             SELECT *,
-                   ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)) AS search_rank,
+                   ts_rank({self._search_vector_sql()}, plainto_tsquery('german', %s)) AS search_rank,
                    similarity({self._normalized_search_sql()}, %s) AS similarity_rank,
                    word_similarity(%s, {self._normalized_search_sql()}) AS word_similarity_rank
             FROM map_items
             {self._where_clause(where)}
             ORDER BY
-                CASE WHEN {self._search_vector_sql()} @@ websearch_to_tsquery('german', %s) THEN 0 ELSE 1 END,
+                CASE WHEN {self._search_vector_sql()} @@ plainto_tsquery('german', %s) THEN 0 ELSE 1 END,
                 GREATEST(
-                    ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)),
+                    ts_rank({self._search_vector_sql()}, plainto_tsquery('german', %s)),
                     similarity({self._normalized_search_sql()}, %s),
                     word_similarity(%s, {self._normalized_search_sql()})
                 ) DESC,
@@ -333,14 +343,11 @@ class PostgresStore:
                 normalized_query,
                 normalized_query,
                 *params,
-                q,
-                normalized_query,
-                normalized_query,
+                *query_params,
                 q,
                 q,
                 normalized_query,
                 normalized_query,
-                q,
                 limit,
             ],
         )
@@ -350,7 +357,7 @@ class PostgresStore:
             FROM map_items
             {self._where_clause(where)}
             """,
-            [*params, q, normalized_query, normalized_query, normalized_query],
+            [*params, *query_params],
         )
         items = [self._row_to_map_item(row) for row in rows]
         return MapItemSearchResponse(items=items, total=total_row["total"] if total_row else len(items))
@@ -566,6 +573,10 @@ class PostgresStore:
         normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
         normalized = re.sub(r"\s+", " ", normalized.lower()).strip()
         return normalized
+
+    @classmethod
+    def _search_terms(cls, value: str) -> list[str]:
+        return [term for term in cls._normalize_search_text(value).split(" ") if term]
 
     @staticmethod
     def _bathing_site_params(item: BathingSite) -> dict[str, Any]:

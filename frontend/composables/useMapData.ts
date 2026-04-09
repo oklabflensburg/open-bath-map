@@ -61,6 +61,11 @@ export function useMapData() {
     state.availableFilters.value = collection.filters
   }
 
+  function applySearchResultsToMap(items: MapItem[]) {
+    state.currentMarkers.value = items.map(toFeatureFromItem)
+    restoreSelectionMarker()
+  }
+
   async function loadBounds(bounds: MapBounds) {
     const requestId = beginRequest('markers')
     state.currentBounds.value = bounds
@@ -177,11 +182,13 @@ export function useMapData() {
 
       state.searchResults.value = response.items
       state.searchTotal.value = response.total
+      applySearchResultsToMap(response.items)
     } catch (error) {
       if (requestId === searchRequestSequence) {
         state.fetchError.value = error instanceof Error ? error.message : 'Die Suche ist fehlgeschlagen.'
         state.searchResults.value = []
         state.searchTotal.value = 0
+        state.currentMarkers.value = []
       }
     } finally {
       if (requestId === searchRequestSequence) {
