@@ -86,17 +86,17 @@ class PostgresStore:
                     )
                     await cur.executemany(
                         """
-                        INSERT INTO map_items (
-                            id, slug, type, title, description, category, lat, lng, address, postcode,
-                            city, image_url, website, tags, water_quality, accessibility,
-                            possible_pollutions, seasonal_status, season_start, season_end,
-                            last_update, district, opening_hours, amenities, search_text
-                        ) VALUES (
-                            %(id)s, %(slug)s, %(type)s, %(title)s, %(description)s, %(category)s, %(lat)s, %(lng)s, %(address)s, %(postcode)s,
-                            %(city)s, %(image_url)s, %(website)s, %(tags)s, %(water_quality)s, %(accessibility)s,
-                            %(possible_pollutions)s, %(seasonal_status)s, %(season_start)s, %(season_end)s,
-                            %(last_update)s, %(district)s, %(opening_hours)s, %(amenities)s, %(search_text)s
-                        )
+                    INSERT INTO map_items (
+                        id, slug, type, title, description, category, lat, lng, address, postcode,
+                        city, image_url, website, source_name, content_license, tags, water_quality, accessibility,
+                        possible_pollutions, seasonal_status, season_start, season_end,
+                        last_update, district, opening_hours, amenities, search_text
+                    ) VALUES (
+                        %(id)s, %(slug)s, %(type)s, %(title)s, %(description)s, %(category)s, %(lat)s, %(lng)s, %(address)s, %(postcode)s,
+                        %(city)s, %(image_url)s, %(website)s, %(source_name)s, %(content_license)s, %(tags)s, %(water_quality)s, %(accessibility)s,
+                        %(possible_pollutions)s, %(seasonal_status)s, %(season_start)s, %(season_end)s,
+                        %(last_update)s, %(district)s, %(opening_hours)s, %(amenities)s, %(search_text)s
+                    )
                         """,
                         [self._map_item_params(item) for item in [*dataset.poi_items, *bathing_map_items]],
                     )
@@ -448,6 +448,8 @@ class PostgresStore:
               city TEXT,
               image_url TEXT,
               website TEXT,
+              source_name TEXT,
+              content_license TEXT,
               tags TEXT[] NOT NULL DEFAULT '{}',
               water_quality TEXT,
               accessibility TEXT,
@@ -462,6 +464,8 @@ class PostgresStore:
               search_text TEXT NOT NULL
             )
             """,
+            "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS source_name TEXT",
+            "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS content_license TEXT",
             f"CREATE INDEX IF NOT EXISTS idx_map_items_search ON map_items USING GIN ({self._search_vector_sql()})",
             "CREATE INDEX IF NOT EXISTS idx_map_items_coords ON map_items (lat, lng)",
             "CREATE INDEX IF NOT EXISTS idx_map_items_type_category ON map_items (type, category)",
@@ -584,6 +588,8 @@ class PostgresStore:
             city=row["city"],
             image_url=row["image_url"],
             website=row["website"],
+            source_name=row.get("source_name"),
+            content_license=row.get("content_license"),
             tags=row["tags"] or [],
             water_quality=row["water_quality"],
             accessibility=row["accessibility"],

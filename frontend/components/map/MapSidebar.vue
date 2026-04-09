@@ -73,6 +73,14 @@
                 <strong class="block text-slate-900">Öffnungszeiten</strong>
                 {{ item.openingHours }}
               </li>
+              <li v-if="item.type === 'poi' && item.contentLicense">
+                <strong class="block text-slate-900">Lizenz</strong>
+                {{ item.contentLicense }}
+              </li>
+              <li v-if="item.type === 'poi' && item.sourceName">
+                <strong class="block text-slate-900">Quelle</strong>
+                {{ item.sourceName }}
+              </li>
               <li v-if="item.amenities.length">
                 <strong class="block text-slate-900">{{ item.type === 'badestelle' ? 'Ausstattung' : 'Angebot' }}</strong>
                 {{ item.amenities.join(', ') }}

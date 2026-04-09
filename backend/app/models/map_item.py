@@ -28,6 +28,8 @@ class MapItem(ApiModel):
     city: str | None = None
     image_url: str | None = None
     website: str | None = None
+    source_name: str | None = None
+    content_license: str | None = None
     tags: list[str] = Field(default_factory=list)
     water_quality: str | None = None
     accessibility: str | None = None

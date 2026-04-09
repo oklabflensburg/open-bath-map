@@ -84,7 +84,10 @@ MEASUREMENT_COLUMNS = [
     "transparency_m",
 ]
 
-POI_SOURCE_URL = "https://opendata.schleswig-holstein.de/dataset/37ce8a8f-abe7-4db4-ba08-5cf6dc659188/resource/2f0e2d4b-58fe-458f-a232-307ca97c4a9b/download/poi.json.gz"
+POI_SOURCE_QUERY = {
+    "term": "POI der Touristischen Landesdatenbank",
+    "title": "POI der Touristischen Landesdatenbank",
+}
 
 POI_INCLUDE_KEYWORDS = [
     "badestelle",

@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 import re
+from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from .constants import (
     MEASUREMENT_COLUMNS,
     POI_EXCLUDE_KEYWORDS,
     POI_INCLUDE_KEYWORDS,
-    POI_SOURCE_URL,
+    POI_SOURCE_QUERY,
     SAISON_COLUMNS,
     SOURCE_QUERIES,
     STAMMDATEN_COLUMNS,
@@ -486,6 +487,35 @@ class OpenDataService:
                 return "Dauerhaft geschlossen"
         return None
 
+    def _extract_image_url(self, raw_item: dict[str, Any]) -> str | None:
+        media = raw_item.get("media") or []
+        candidates: list[str] = []
+
+        def visit(value: Any) -> None:
+            if isinstance(value, str):
+                normalized = value.strip()
+                lowered = normalized.casefold()
+                if lowered.startswith("//"):
+                    normalized = f"https:{normalized}"
+                    lowered = normalized.casefold()
+                if lowered.startswith(("http://", "https://")) and any(
+                    token in lowered for token in [".jpg", ".jpeg", ".png", ".webp", ".gif", "/image", "image/"]
+                ):
+                    candidates.append(normalized)
+                return
+
+            if isinstance(value, dict):
+                for nested in value.values():
+                    visit(nested)
+                return
+
+            if isinstance(value, Iterable) and not isinstance(value, (bytes, bytearray)):
+                for nested in value:
+                    visit(nested)
+
+        visit(media)
+        return candidates[0] if candidates else None
+
     def _map_tourism_poi(self, raw_item: dict[str, Any]) -> MapItem | None:
         geo_info = raw_item.get("geoInfo") or {}
         coordinates = geo_info.get("coordinates") or {}
@@ -508,6 +538,8 @@ class OpenDataService:
         street_no = clean_text(geo_info.get("streetNo") or address_data.get("streetNo"))
         website = clean_text((address_data.get("homepage") or {}).get("de"))
         last_update = parse_datetime(raw_item.get("lastChangeTime"))
+        content_license = clean_text(((raw_item.get("mediaLicense") or {}).get("i18nName") or {}).get("de"))
+        image_url = self._extract_image_url(raw_item)
 
         text_blob = " ".join(filter(None, [title, short_description, long_description, permalink])).casefold()
         if not self._is_relevant_tourism_poi(text_blob, title):
@@ -528,8 +560,10 @@ class OpenDataService:
             address=address,
             postcode=postcode,
             city=city,
-            image_url=None,
+            image_url=image_url,
             website=website,
+            source_name="Touristische Landesdatenbank Schleswig-Holstein (TA.SH)",
+            content_license=content_license,
             tags=self._build_tourism_tags(text_blob, category),
             last_update=last_update,
             opening_hours=self._extract_opening_hours(raw_item),
@@ -551,12 +585,13 @@ class OpenDataService:
     async def _build_dataset(self) -> CachedDataset:
         async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds, follow_redirects=True) as client:
             source_urls = await self._discover_source_urls(client)
+            poi_source_url = await self._discover_poi_source_url(client)
             raw_stammdaten = await self._fetch_table(client, source_urls["stammdaten"], STAMMDATEN_COLUMNS)
             raw_einstufung = await self._fetch_table(client, source_urls["einstufung"], EINSTUFUNG_COLUMNS)
             raw_infra = await self._fetch_table(client, source_urls["infrastruktur"], INFRASTRUCTURE_COLUMNS)
             raw_saison = await self._fetch_table(client, source_urls["saison"], SAISON_COLUMNS)
             raw_messungen = await self._fetch_table(client, source_urls["messungen"], MEASUREMENT_COLUMNS)
-            poi_items = await self._fetch_poi_items(client, POI_SOURCE_URL)
+            poi_items = await self._fetch_poi_items(client, poi_source_url)
 
         quality_by_id: dict[str, dict[str, Any]] = {}
         for row in raw_einstufung:
@@ -638,7 +673,7 @@ class OpenDataService:
             items=items,
             poi_items=poi_items,
             data_updated_at=datetime.utcnow(),
-            source_urls={**source_urls, "pois": POI_SOURCE_URL},
+            source_urls={**source_urls, "pois": poi_source_url},
             cached_at=datetime.utcnow(),
         )
 
@@ -668,6 +703,39 @@ class OpenDataService:
             except Exception:
                 result[key] = config["fallback_url"]
         return result
+
+    async def _discover_poi_source_url(self, client: httpx.AsyncClient) -> str:
+        response = await client.get(
+            CKAN_API_URL,
+            params={"q": POI_SOURCE_QUERY["term"], "rows": 10},
+        )
+        response.raise_for_status()
+        payload = response.json()
+        datasets = payload.get("result", {}).get("results", [])
+        matching = [
+            dataset for dataset in datasets
+            if POI_SOURCE_QUERY["title"] in dataset.get("title", "")
+        ]
+        matching.sort(key=lambda dataset: dataset.get("metadata_modified", ""), reverse=True)
+
+        for dataset in matching:
+            resources = dataset.get("resources", [])
+            json_resources = [
+                resource for resource in resources
+                if resource.get("url") and resource.get("format", "").upper() == "JSON"
+            ]
+            json_resources.sort(
+                key=lambda resource: (
+                    "poi" not in (resource.get("name", "") or "").casefold(),
+                    ".gz" not in (resource.get("url", "") or "").casefold(),
+                ),
+            )
+            for resource in json_resources:
+                url = resource.get("url")
+                if url:
+                    return url
+
+        raise RuntimeError("Could not discover current TA.SH POI JSON resource URL")
 
     async def _fetch_table(self, client: httpx.AsyncClient, url: str, fieldnames: list[str]) -> list[dict[str, str]]:
         response = await client.get(url)

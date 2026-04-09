@@ -14,6 +14,8 @@ export interface MapItem {
   city?: string | null
   imageUrl?: string | null
   website?: string | null
+  sourceName?: string | null
+  contentLicense?: string | null
   tags: string[]
   waterQuality?: string | null
   accessibility?: string | null
