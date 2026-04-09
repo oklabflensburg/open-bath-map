@@ -1,5 +1,16 @@
 <template>
   <div class="space-y-4 rounded-xl border border-slate-300 bg-white p-4">
+    <label class="block space-y-1">
+      <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Volltextsuche</span>
+      <input
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-sky-700"
+        :value="searchQuery"
+        type="search"
+        placeholder="Ort, Badestelle, Adresse, Angebot …"
+        @input="$emit('update:search', ($event.target as HTMLInputElement).value)"
+      >
+    </label>
+
     <div class="flex flex-wrap gap-2">
       <button
         v-for="option in typeOptions"
@@ -71,12 +82,14 @@ import type { FilterState, MapFilterOptions } from '../../types/map'
 defineProps<{
   filters: FilterState
   options: MapFilterOptions
+  searchQuery: string
   isLocating?: boolean
   locationError?: string | null
 }>()
 
 defineEmits<{
   'update:filters': [filters: FilterState]
+  'update:search': [value: string]
   locate: []
   reset: []
 }>()

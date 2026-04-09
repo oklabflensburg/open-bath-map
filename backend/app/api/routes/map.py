@@ -69,6 +69,7 @@ async def search_items(
     q: str = Query(min_length=2),
     item_type: str | None = Query(default=None, alias="type"),
     category: str | None = None,
+    infrastructure: str | None = None,
     limit: int = Query(default=20, ge=1, le=100),
     service: OpenDataService = Depends(get_service),
 ) -> MapItemSearchResponse:
@@ -76,5 +77,6 @@ async def search_items(
         q=q,
         item_type=item_type,
         category=category,
+        infrastructure=infrastructure,
         limit=limit,
     )

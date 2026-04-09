@@ -25,15 +25,29 @@
             :is-locating="isLocating"
             :location-error="locationError"
             :options="options"
+            :search-query="searchQuery"
             @locate="$emit('locate')"
             @reset="$emit('resetFilters')"
             @update:filters="$emit('update:filters', $event)"
+            @update:search="$emit('update:search', $event)"
           />
         </div>
 
         <p v-if="fetchError" class="mb-4 text-sm text-rose-700">
           {{ fetchError }}
         </p>
+
+        <div class="mb-4">
+          <MapSearchResults
+            :is-searching="isSearching"
+            :items="searchResults"
+            :query="searchQuery"
+            :selected-item-id="item?.id ?? null"
+            :total="searchTotal"
+            @clear="$emit('clearSearch')"
+            @select="$emit('selectSearchResult', $event)"
+          />
+        </div>
 
         <div v-if="!item">
           <MapIntro />
@@ -88,18 +102,25 @@ const props = defineProps<{
   isOpen: boolean
   filters: FilterState
   options: MapFilterOptions
+  searchQuery: string
+  searchResults: MapItem[]
+  searchTotal: number
+  isSearching: boolean
   fetchError: string | null
   isLocating: boolean
   locationError: string | null
 }>()
 
 const emit = defineEmits<{
+  clearSearch: []
   close: []
   closeDetails: []
   open: []
   locate: []
   resetFilters: []
+  selectSearchResult: [id: string]
   'update:filters': [filters: FilterState]
+  'update:search': [value: string]
 }>()
 
 const contentElement = ref<HTMLElement | null>(null)

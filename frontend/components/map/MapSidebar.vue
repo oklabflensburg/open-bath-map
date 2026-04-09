@@ -11,14 +11,28 @@
         :is-locating="isLocating"
         :location-error="locationError"
         :options="options"
+        :search-query="searchQuery"
         @locate="$emit('locate')"
         @reset="$emit('resetFilters')"
         @update:filters="$emit('update:filters', $event)"
+        @update:search="$emit('update:search', $event)"
       />
 
       <p v-if="fetchError" class="mt-4 text-sm text-rose-700">
         {{ fetchError }}
       </p>
+
+      <div class="mt-4">
+        <MapSearchResults
+          :is-searching="isSearching"
+          :items="searchResults"
+          :query="searchQuery"
+          :selected-item-id="item?.id ?? null"
+          :total="searchTotal"
+          @clear="$emit('clearSearch')"
+          @select="$emit('selectSearchResult', $event)"
+        />
+      </div>
 
       <div class="mt-6">
         <MapIntro v-if="!item" />
@@ -110,17 +124,24 @@ const props = defineProps<{
   item: MapItem | null
   filters: FilterState
   options: MapFilterOptions
+  searchQuery: string
+  searchResults: MapItem[]
+  searchTotal: number
   isLoading: boolean
+  isSearching: boolean
   fetchError: string | null
   isLocating: boolean
   locationError: string | null
 }>()
 
 defineEmits<{
+  clearSearch: []
   close: []
   locate: []
   resetFilters: []
+  selectSearchResult: [id: string]
   'update:filters': [filters: FilterState]
+  'update:search': [value: string]
 }>()
 
 const formattedAddress = computed(() => props.item ? formatAddress(props.item) : null)

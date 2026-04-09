@@ -5,6 +5,7 @@ import gzip
 import io
 import json
 import re
+import unicodedata
 from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -233,32 +234,45 @@ class OpenDataService:
         q: str,
         item_type: str | None = None,
         category: str | None = None,
+        infrastructure: str | None = None,
         limit: int = 20,
     ) -> MapItemSearchResponse:
         if self.postgres.is_enabled:
             await self.postgres.ensure_seeded(self.sync_database)
-            return await self.postgres.search_map_items(q=q, item_type=item_type, category=category, limit=limit)
+            return await self.postgres.search_map_items(
+                q=q,
+                item_type=item_type,
+                category=category,
+                infrastructure=infrastructure,
+                limit=limit,
+            )
 
-        items = await self._get_map_items(item_type=item_type, category=category)
-        query = q.casefold()
-        matches = [
-            item for item in items
-            if query in " ".join(
-                filter(
-                    None,
-                    [
-                        item.title,
-                        item.description,
-                        item.category,
-                        item.city,
-                        item.address,
-                        item.district,
-                        " ".join(item.tags),
-                    ],
+        items = await self._get_map_items(item_type=item_type, category=category, infrastructure=infrastructure)
+        query = self._normalize_search_text(q)
+        matches = []
+        for item in items:
+            haystack = self._normalize_search_text(
+                " ".join(
+                    filter(
+                        None,
+                        [
+                            item.title,
+                            item.description,
+                            item.category,
+                            item.city,
+                            item.address,
+                            item.district,
+                            " ".join(item.tags),
+                        ],
+                    ),
                 ),
-            ).casefold()
-        ][:limit]
-        return MapItemSearchResponse(items=matches, total=len(matches))
+            )
+            if query in haystack:
+                matches.append(item)
+                continue
+            if any(self._is_fuzzy_match(query, token) for token in haystack.split()):
+                matches.append(item)
+        return MapItemSearchResponse(items=matches[:limit], total=len(matches))
 
     async def sync_database(self) -> dict[str, int]:
         if not self.postgres.is_enabled:
@@ -294,6 +308,20 @@ class OpenDataService:
 
         items.sort(key=lambda item: ((item.city or ""), (item.category or ""), item.title))
         return items
+
+    @staticmethod
+    def _normalize_search_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"\s+", " ", normalized.lower()).strip()
+
+    @staticmethod
+    def _is_fuzzy_match(query: str, token: str) -> bool:
+        if len(query) < 4 or len(token) < 4:
+            return False
+        if abs(len(query) - len(token)) > 2:
+            return False
+        mismatches = sum(1 for left, right in zip(query, token) if left != right) + abs(len(query) - len(token))
+        return mismatches <= 2
 
     async def _get_bathing_map_items(self, dataset: CachedDataset) -> list[MapItem]:
         items: list[MapItem] = []

@@ -21,13 +21,20 @@
       :filters="state.filters.value"
       :is-loading="state.isLoading.value"
       :is-locating="isLocating"
+      :is-searching="state.isSearching.value"
       :item="state.selectedItem.value"
       :location-error="locationError"
       :options="state.availableFilters.value"
+      :search-query="state.searchQuery.value"
+      :search-results="state.searchResults.value"
+      :search-total="state.searchTotal.value"
+      @clear-search="clearSearchQuery"
       @close="closeSelection"
       @locate="handleLocate"
       @reset-filters="resetFilters"
+      @select-search-result="handleSearchResultSelect"
       @update:filters="handleFiltersUpdate"
+      @update:search="handleSearchQueryUpdate"
     />
 
     <div class="pointer-events-none fixed inset-x-0 bottom-4 z-[1200] flex justify-center px-4 md:hidden">
@@ -41,27 +48,34 @@
       :filters="state.filters.value"
       :is-locating="isLocating"
       :is-open="state.isBottomSheetOpen.value"
+      :is-searching="state.isSearching.value"
       :item="state.selectedItem.value"
       :location-error="locationError"
       :options="state.availableFilters.value"
+      :search-query="state.searchQuery.value"
+      :search-results="state.searchResults.value"
+      :search-total="state.searchTotal.value"
+      @clear-search="clearSearchQuery"
       @close="state.closeBottomSheet()"
       @close-details="closeSelection"
       @open="state.openBottomSheet()"
       @locate="handleLocate"
       @reset-filters="resetFilters"
+      @select-search-result="handleSearchResultSelect"
       @update:filters="handleFiltersUpdate"
+      @update:search="handleSearchQueryUpdate"
     />
   </main>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useHead, useRuntimeConfig, useSeoMeta } from '#imports'
 import type { FilterState, MapBounds, MapItem, UserLocation } from '../../types/map'
 import { buildMetaDescription, buildMetaTitle } from '../../utils/formatters'
 
 const state = useMapState()
-const { loadBounds, loadRadius } = useMapData()
+const { clearSearch, loadBounds, loadRadius, loadSearch } = useMapData()
 const { closeSelection, selectById } = useMapSelection()
 const { isLocating, locationError, requestLocation } = useGeolocation()
 const config = useRuntimeConfig()
@@ -71,6 +85,7 @@ const mapViewRef = ref<{
 } | null>(null)
 const didInitialBoundsLoad = ref(false)
 const isMapReady = ref(false)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const canonicalUrl = computed(() => {
   const path = state.selectedSlug.value ? `/${state.selectedSlug.value}` : ''
@@ -111,6 +126,36 @@ watch(() => state.filters.value, async () => {
   await reloadForCurrentMode()
 }, { deep: true })
 
+watch(
+  () => ({
+    query: state.searchQuery.value,
+    type: state.filters.value.type,
+    category: state.filters.value.category,
+    infrastructure: state.filters.value.infrastructure,
+  }),
+  (nextState) => {
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer)
+    }
+
+    if (nextState.query.trim().length < 2) {
+      clearSearch()
+      return
+    }
+
+    searchDebounceTimer = setTimeout(() => {
+      void loadSearch(nextState.query)
+    }, 250)
+  },
+  { deep: true },
+)
+
+onBeforeUnmount(() => {
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer)
+  }
+})
+
 async function handleBoundsChange(bounds: MapBounds) {
   didInitialBoundsLoad.value = true
   await loadBounds(bounds)
@@ -147,8 +192,24 @@ function handleMapBackgroundClick() {
   }
 }
 
+function handleSearchQueryUpdate(value: string) {
+  state.searchQuery.value = value
+}
+
 function handleFiltersUpdate(filters: FilterState) {
   state.filters.value = filters
+}
+
+async function handleSearchResultSelect(id: string) {
+  const item = await selectById(id)
+  if (item) {
+    focusSelectedItem(item)
+  }
+}
+
+function clearSearchQuery() {
+  state.searchQuery.value = ''
+  clearSearch()
 }
 
 function resetFilters() {

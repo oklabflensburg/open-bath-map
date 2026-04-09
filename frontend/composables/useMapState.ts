@@ -26,8 +26,12 @@ export function useMapState() {
   const isSidebarOpen = useState<boolean>('map:sidebar-open', () => false)
   const isBottomSheetOpen = useState<boolean>('map:bottomsheet-open', () => true)
   const isLoading = useState<boolean>('map:is-loading', () => false)
+  const isSearching = useState<boolean>('map:is-searching', () => false)
   const fetchError = useState<string | null>('map:fetch-error', () => null)
   const queryMode = useState<'bounds' | 'radius'>('map:query-mode', () => 'bounds')
+  const searchQuery = useState<string>('map:search-query', () => '')
+  const searchResults = useState<MapItem[]>('map:search-results', () => [])
+  const searchTotal = useState<number>('map:search-total', () => 0)
 
   function setSelectedItem(item: MapItem | null) {
     selectedItem.value = item
@@ -59,8 +63,12 @@ export function useMapState() {
     isSidebarOpen,
     isBottomSheetOpen,
     isLoading,
+    isSearching,
     fetchError,
     queryMode,
+    searchQuery,
+    searchResults,
+    searchTotal,
     setSelectedItem,
     clearSelection,
     openBottomSheet,

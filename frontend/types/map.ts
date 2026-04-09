@@ -65,6 +65,11 @@ export interface MapFeatureCollection {
   total: number
 }
 
+export interface MapItemSearchResponse {
+  items: MapItem[]
+  total: number
+}
+
 export interface MapBounds {
   xmin: number
   ymin: number

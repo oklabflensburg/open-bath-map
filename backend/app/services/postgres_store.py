@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
@@ -140,9 +142,9 @@ class PostgresStore:
         order_by = "ORDER BY district NULLS LAST, municipality NULLS LAST, name"
 
         if q:
-            where.append(f"{self._search_vector_sql()} @@ websearch_to_tsquery('simple', %s)")
+            where.append(f"{self._search_vector_sql()} @@ websearch_to_tsquery('german', %s)")
             where_params.append(q)
-            select_rank = f", ts_rank({self._search_vector_sql()}, websearch_to_tsquery('simple', %s)) AS search_rank"
+            select_rank = f", ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)) AS search_rank"
             select_params.append(q)
             order_by = "ORDER BY search_rank DESC, name"
         if district:
@@ -286,28 +288,72 @@ class PostgresStore:
         q: str,
         item_type: str | None,
         category: str | None,
+        infrastructure: str | None,
         limit: int,
     ) -> MapItemSearchResponse:
-        where = [f"{self._search_vector_sql()} @@ websearch_to_tsquery('simple', %s)"]
-        params: list[Any] = [q]
+        normalized_query = self._normalize_search_text(q)
+        base_where: list[str] = []
+        params: list[Any] = []
         if item_type in {"badestelle", "poi"}:
-            where.append("type = %s")
+            base_where.append("type = %s")
             params.append(item_type)
         if category:
-            where.append("category = %s")
+            base_where.append("category = %s")
             params.append(category)
+        if infrastructure:
+            base_where.append("(%s = ANY(amenities) OR accessibility = %s)")
+            params.extend([infrastructure, infrastructure])
+        search_predicate = (
+            f"{self._search_vector_sql()} @@ websearch_to_tsquery('german', %s) "
+            f"OR {self._normalized_search_sql()} LIKE '%%' || %s || '%%' "
+            f"OR {self._normalized_search_sql()} %% %s "
+            f"OR word_similarity(%s, {self._normalized_search_sql()}) >= 0.5"
+        )
+        where = [*base_where, f"({search_predicate})"]
         rows = await self._fetch_all(
             f"""
-            SELECT *, ts_rank({self._search_vector_sql()}, websearch_to_tsquery('simple', %s)) AS search_rank
+            SELECT *,
+                   ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)) AS search_rank,
+                   similarity({self._normalized_search_sql()}, %s) AS similarity_rank,
+                   word_similarity(%s, {self._normalized_search_sql()}) AS word_similarity_rank
             FROM map_items
             {self._where_clause(where)}
-            ORDER BY search_rank DESC, title
+            ORDER BY
+                CASE WHEN {self._search_vector_sql()} @@ websearch_to_tsquery('german', %s) THEN 0 ELSE 1 END,
+                GREATEST(
+                    ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)),
+                    similarity({self._normalized_search_sql()}, %s),
+                    word_similarity(%s, {self._normalized_search_sql()})
+                ) DESC,
+                title
             LIMIT %s
             """,
-            [q, *params, limit],
+            [
+                q,
+                normalized_query,
+                normalized_query,
+                *params,
+                q,
+                normalized_query,
+                normalized_query,
+                q,
+                q,
+                normalized_query,
+                normalized_query,
+                q,
+                limit,
+            ],
+        )
+        total_row = await self._fetch_one(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM map_items
+            {self._where_clause(where)}
+            """,
+            [*params, q, normalized_query, normalized_query, normalized_query],
         )
         items = [self._row_to_map_item(row) for row in rows]
-        return MapItemSearchResponse(items=items, total=len(items))
+        return MapItemSearchResponse(items=items, total=total_row["total"] if total_row else len(items))
 
     async def _query_map_items(
         self,
@@ -391,6 +437,18 @@ class PostgresStore:
 
     async def _init_schema(self) -> None:
         statements = [
+            "CREATE EXTENSION IF NOT EXISTS unaccent",
+            "CREATE EXTENSION IF NOT EXISTS pg_trgm",
+            """
+            CREATE OR REPLACE FUNCTION immutable_unaccent(TEXT)
+            RETURNS TEXT
+            LANGUAGE sql
+            IMMUTABLE
+            PARALLEL SAFE
+            AS $$
+                SELECT public.unaccent($1)
+            $$;
+            """,
             """
             CREATE TABLE IF NOT EXISTS dataset_state (
               id SMALLINT PRIMARY KEY,
@@ -431,7 +489,8 @@ class PostgresStore:
               lon DOUBLE PRECISION NOT NULL
             )
             """,
-            f"CREATE INDEX IF NOT EXISTS idx_bathing_sites_search ON bathing_sites USING GIN ({self._search_vector_sql()})",
+            f"CREATE INDEX IF NOT EXISTS idx_bathing_sites_search_german ON bathing_sites USING GIN ({self._search_vector_sql()})",
+            f"CREATE INDEX IF NOT EXISTS idx_bathing_sites_search_trgm ON bathing_sites USING GIN ({self._normalized_search_sql()} gin_trgm_ops)",
             "CREATE INDEX IF NOT EXISTS idx_bathing_sites_coords ON bathing_sites (lat, lon)",
             """
             CREATE TABLE IF NOT EXISTS map_items (
@@ -466,7 +525,8 @@ class PostgresStore:
             """,
             "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS source_name TEXT",
             "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS content_license TEXT",
-            f"CREATE INDEX IF NOT EXISTS idx_map_items_search ON map_items USING GIN ({self._search_vector_sql()})",
+            f"CREATE INDEX IF NOT EXISTS idx_map_items_search_german ON map_items USING GIN ({self._search_vector_sql()})",
+            f"CREATE INDEX IF NOT EXISTS idx_map_items_search_trgm ON map_items USING GIN ({self._normalized_search_sql()} gin_trgm_ops)",
             "CREATE INDEX IF NOT EXISTS idx_map_items_coords ON map_items (lat, lng)",
             "CREATE INDEX IF NOT EXISTS idx_map_items_type_category ON map_items (type, category)",
         ]
@@ -495,7 +555,17 @@ class PostgresStore:
 
     @staticmethod
     def _search_vector_sql() -> str:
-        return "to_tsvector('simple', search_text)"
+        return "to_tsvector('german', search_text)"
+
+    @staticmethod
+    def _normalized_search_sql() -> str:
+        return "immutable_unaccent(lower(search_text))"
+
+    @staticmethod
+    def _normalize_search_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+        normalized = re.sub(r"\s+", " ", normalized.lower()).strip()
+        return normalized
 
     @staticmethod
     def _bathing_site_params(item: BathingSite) -> dict[str, Any]:

@@ -1,8 +1,9 @@
 import { useRuntimeConfig } from '#imports'
-import type { FilterState, MapBounds, MapFeature, MapFeatureCollection, MapItem, UserLocation } from '../types/map'
+import type { FilterState, MapBounds, MapFeature, MapFeatureCollection, MapItem, MapItemSearchResponse, UserLocation } from '../types/map'
 
 let markerRequestSequence = 0
 let detailRequestSequence = 0
+let searchRequestSequence = 0
 let pendingRequests = 0
 
 function toQueryFilters(filters: FilterState) {
@@ -148,6 +149,54 @@ export function useMapData() {
     }
   }
 
+  async function loadSearch(query: string, limit = 12) {
+    const normalizedQuery = query.trim()
+    searchRequestSequence += 1
+    const requestId = searchRequestSequence
+
+    if (normalizedQuery.length < 2) {
+      clearSearch()
+      return
+    }
+
+    state.isSearching.value = true
+    state.fetchError.value = null
+
+    try {
+      const response = await $fetch<MapItemSearchResponse>(`${config.public.apiBase}/api/map/v1/search`, {
+        query: {
+          q: normalizedQuery,
+          limit,
+          ...toQueryFilters(state.filters.value),
+        },
+      })
+
+      if (requestId !== searchRequestSequence) {
+        return
+      }
+
+      state.searchResults.value = response.items
+      state.searchTotal.value = response.total
+    } catch (error) {
+      if (requestId === searchRequestSequence) {
+        state.fetchError.value = error instanceof Error ? error.message : 'Die Suche ist fehlgeschlagen.'
+        state.searchResults.value = []
+        state.searchTotal.value = 0
+      }
+    } finally {
+      if (requestId === searchRequestSequence) {
+        state.isSearching.value = false
+      }
+    }
+  }
+
+  function clearSearch() {
+    searchRequestSequence += 1
+    state.isSearching.value = false
+    state.searchResults.value = []
+    state.searchTotal.value = 0
+  }
+
   function upsertSelectedMarker(item: MapItem) {
     const nextFeature = toFeatureFromItem(item)
     const existing = state.currentMarkers.value.find((feature) => feature.id === item.id)
@@ -167,10 +216,12 @@ export function useMapData() {
   }
 
   return {
+    clearSearch,
     loadBounds,
     loadRadius,
     loadDetailsById,
     loadDetailsBySlug,
+    loadSearch,
     upsertSelectedMarker,
   }
 }
