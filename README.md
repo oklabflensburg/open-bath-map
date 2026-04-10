@@ -6,100 +6,150 @@ Interaktive Open-Data-Kartenanwendung für Badestellen und wassernahe POIs in Sc
 
 ## Überblick
 
-Open Bath Map kombiniert ein Nuxt-3-Frontend mit einem FastAPI-Backend. Die Anwendung lädt offene Badegewässer-Daten des Landes Schleswig-Holstein, normalisiert sie serverseitig und stellt sie über eine gemeinsame Karten-API für eine interaktive Leaflet-Karte bereit. Ergänzend werden wassernahe touristische POIs aus dem Open-Data-Portal Schleswig-Holstein eingebunden.
+Open Bath Map besteht aus einem Nuxt-3-Frontend und einem FastAPI-Backend. Das Backend lädt offene Badegewässerdaten des Landes Schleswig-Holstein, ergänzt sie um wassernahe touristische POIs, normalisiert beide Quellen und stellt sie über eine gemeinsame Karten-API bereit. Das Frontend rendert darauf eine Leaflet-Karte mit SSR-fähigen Detailseiten, Suchfunktion, Filtern, JSON+LD und PWA-Bausteinen.
 
-Die Karte ist auf eine schnelle, kartenzentrierte Nutzung ausgelegt:
+Der aktuelle Fokus des Repos liegt auf einer kartenzentrierten API. Die frühere fachliche `/api/bathing-sites`-Schiene ist entfernt. Das Frontend nutzt ausschließlich `/api/map/v1/*` sowie `/api/health`.
 
-- Marker werden bounds-basiert nachgeladen, sobald sich der sichtbare Kartenausschnitt ändert.
-- Detailansichten sind über sprechende Slugs direkt verlinkbar.
-- Auf Mobilgeräten gibt es eine Standortfunktion und ein Bottom Sheet.
-- Die Anwendung ist zusätzlich als installierbare PWA konfiguriert.
-
-## Stack
-
-- Frontend: Nuxt 3, Vue 3, TypeScript, Tailwind CSS, Leaflet, `leaflet.markercluster`
-- Backend: FastAPI, Pydantic, `httpx`, `pydantic-settings`
-- Datenquellen: CKAN/Open-Data-Portal Schleswig-Holstein für Badegewässer und touristische POIs
-- Auslieferung: SSR-fähiges Nuxt-Frontend, JSON-Datei-Cache im Backend, PWA-Manifest und Service Worker
-
-## Kernfunktionen
+## Funktionen
 
 - Interaktive Karte für Badestellen und zusätzliche wassernahe POIs
-- Marker-Clustering mit deaktiviertem Clustering auf hohem Zoom
-- Bounds-basierte Marker-Abfrage über `/api/map/v1/bounds`
-- Radius-Abfrage auf Basis des Browser-Standorts über `/api/map/v1/radius`
-- Detaildaten für Marker über `/api/map/v1/details`
-- SEO-fähige Detailrouten über `/<slug>`
-- Filter für Typ, Kategorie und Infrastruktur
-- Rechtsseiten für Impressum und Datenschutz auf Basis von `.env`-Werten
-- Installierbare PWA mit Manifest, Homescreen-Icons und Service Worker
+- Bounds-basierte Marker-Abfrage für den sichtbaren Kartenausschnitt
+- Radius-Suche auf Basis des Browser-Standorts
+- Volltextsuche mit Typ-, Kategorie- und Infrastrukturfiltern
+- SEO-fähige Detailseiten unter sprechenden Slugs
+- JSON+LD und Open-Graph-Metadaten pro Detailseite
+- Bild-Fallbacks für nicht erreichbare Bilder
+- Desktop-Sidebar und mobiles Bottom Sheet mit tab-basierter Navigation
+- PWA-Grundausstattung mit Manifest und Service Worker
+- Optionale PostgreSQL-/PostGIS-Persistenz mit Volltext- und Trigramm-Suche
 
 ## Architektur
 
 ### Frontend
 
-Das Frontend ist ein Nuxt-3-Projekt unter [`frontend`](./frontend). Die eigentliche Kartenlogik liegt in [`MapExperience.vue`](./frontend/components/map/MapExperience.vue). Diese Komponente verbindet:
+Das Frontend liegt unter [`frontend`](./frontend) und ist ein Nuxt-3-Projekt mit Vue 3, TypeScript, Tailwind CSS, Leaflet und `leaflet.markercluster`.
 
-- Kartenansicht über [`MapView.vue`](./frontend/components/map/MapView.vue)
-- Desktop-Detailbereich über [`MapSidebar.vue`](./frontend/components/map/MapSidebar.vue)
-- Mobile Interaktion über [`MapBottomSheet.vue`](./frontend/components/map/MapBottomSheet.vue)
-- Filter- und Auswahlzustand über die Composables
+Wichtige Bausteine:
 
-Zentrale Frontend-Bausteine:
-
-- [`useMapState.ts`](./frontend/composables/useMapState.ts): globaler Karten-, Filter- und UI-Zustand über Nuxt `useState`
-- [`useMapData.ts`](./frontend/composables/useMapData.ts): Marker- und Detailabfragen, Request-Sequencing gegen Race Conditions
-- [`useMapSelection.ts`](./frontend/composables/useMapSelection.ts): Synchronisierung zwischen Auswahlzustand und slug-basierter Route
-- [`useGeolocation.ts`](./frontend/composables/useGeolocation.ts): Browser-Geolocation mit Fehlerbehandlung
-
-Die Route [`frontend/pages/[[slug]].vue`](./frontend/pages/[[slug]].vue) lädt Detaildaten bereits serverseitig vor, damit Meta-Titel und Meta-Beschreibung auch auf Detailseiten korrekt gesetzt werden.
+- [`frontend/pages/[[slug]].vue`](./frontend/pages/[[slug]].vue): SSR-Einstiegspunkt für Karten- und Detailseiten, inklusive SEO-Metadaten und JSON+LD
+- [`frontend/components/map/MapExperience.vue`](./frontend/components/map/MapExperience.vue): zentrale Orchestrierung von Karte, Sidebar, Bottom Sheet, Suche und Auswahlzustand
+- [`frontend/components/map/MapView.vue`](./frontend/components/map/MapView.vue): Leaflet-Karte mit Marker-Rendering und Interaktionen
+- [`frontend/components/map/MapSidebar.vue`](./frontend/components/map/MapSidebar.vue): Desktop-Navigation für Info, Suche/Filter und Markerdetails
+- [`frontend/components/map/MapBottomSheet.vue`](./frontend/components/map/MapBottomSheet.vue): mobile Entsprechung zur Sidebar
+- [`frontend/composables/useMapData.ts`](./frontend/composables/useMapData.ts): API-Zugriffe auf Bounds, Radius, Detaildaten und Suche
+- [`frontend/composables/useMapSelection.ts`](./frontend/composables/useMapSelection.ts): Synchronisierung von Marker-Auswahl und slug-basierter Route
+- [`frontend/composables/useMapState.ts`](./frontend/composables/useMapState.ts): globaler Karten- und UI-Zustand
+- [`frontend/composables/useJsonLd.ts`](./frontend/composables/useJsonLd.ts): Einbindung strukturierter Daten
+- [`frontend/composables/useImageFallback.ts`](./frontend/composables/useImageFallback.ts): Fallback bei defekten Bild-URLs
 
 ### Backend
 
-Das Backend lebt unter [`backend`](./backend) und stellt drei API-Bereiche bereit:
+Das Backend liegt unter [`backend`](./backend) und ist ein FastAPI-Dienst mit SQLModel/SQLAlchemy, optionaler PostgreSQL-Persistenz und PostGIS-Unterstützung.
 
-- [`/api/health`](./backend/app/api/routes/health.py)
-- [`/api/bathing-sites`](./backend/app/api/routes/bathing_sites.py)
-- [`/api/map/v1`](./backend/app/api/routes/map.py)
+Wichtige Bausteine:
 
-Die zentrale Fachlogik steckt in [`opendata.py`](./backend/app/services/opendata.py). Der Service übernimmt:
+- [`backend/app/main.py`](./backend/app/main.py): FastAPI-App und Router-Registrierung
+- [`backend/app/api/routes/map.py`](./backend/app/api/routes/map.py): Karten-Endpunkte
+- [`backend/app/api/routes/health.py`](./backend/app/api/routes/health.py): Health-Endpunkt
+- [`backend/app/services/opendata/service.py`](./backend/app/services/opendata/service.py): Discovery, Download, Normalisierung und Mapping der Open-Data-Quellen
+- [`backend/app/services/postgres_store.py`](./backend/app/services/postgres_store.py): Persistenz, Suche und Kartenabfragen auf PostgreSQL/PostGIS
+- [`backend/app/db/models.py`](./backend/app/db/models.py): SQLModel-Tabellen für Datensatzstatus, Badestellen und Kartenobjekte
+- [`backend/app/db/session.py`](./backend/app/db/session.py): Engine-, Session- und Support-Objekt-Verwaltung für PostgreSQL
+- [`backend/app/services/opendata/source_queries.toml`](./backend/app/services/opendata/source_queries.toml): konfigurierbare CKAN-/Fallback-Quellen
 
-- Discovery der CSV-Quellen über die CKAN-API
-- Fallback auf bekannte direkte EFI-CSV-URLs
-- Laden und Normalisieren mehrerer Teilquellen
-- Zusammenführen von Stammdaten, Einstufung, Infrastruktur, Saison und Messungen
-- Berechnung von Entfernungen per Haversine
-- Aufbereitung einer kombinierten Kartenrepräsentation für Badestellen und POIs
-- Schreiben und Lesen eines JSON-Datei-Caches
+## Datenquellen und Datenfluss
 
-### Datenmodell
+### Quellen
 
-Das Backend verwendet zwei Hauptmodelle:
+Die Badestellen werden aus mehreren CSV-Quellen des Landes Schleswig-Holstein zusammengesetzt:
 
-- [`BathingSite`](./backend/app/models/bathing_site.py) für die rohe bzw. fachliche Sicht auf Badegewässer
-- [`MapItem`](./backend/app/models/map_item.py) für die vereinheitlichte Darstellung auf der Karte
+- Stammdaten
+- Einstufung
+- Infrastruktur
+- Saisondauer
+- Messungen
 
-Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs werden aus dem Datensatz `POI der Touristischen Landesdatenbank` der Tourismus Agentur Schleswig-Holstein abgeleitet und in der Karten-API mit den Badestellen zusammengeführt.
+Zusätzlich werden wassernahe touristische POIs aus der touristischen Landesdatenbank eingebunden.
 
-## Datenfluss
+Die Quellkonfiguration liegt in [`backend/app/services/opendata/source_queries.toml`](./backend/app/services/opendata/source_queries.toml). Die CKAN-Basis-URL wird ebenfalls daraus gelesen. Falls die CKAN-Discovery keine passende Ressource liefert, verwendet der Service direkte EFI-Fallback-URLs.
 
-1. Das Frontend lädt Marker anhand des sichtbaren Kartenausschnitts oder einer Radius-Abfrage.
-2. Das Backend lädt bei Bedarf die Open-Data-Quellen, normalisiert sie und cached das Ergebnis lokal.
-3. Die Karten-API liefert GeoJSON-artige Features plus Filter-Metadaten zurück.
-4. Beim Klick auf einen Marker lädt das Frontend Detaildaten nach.
-5. Die Auswahl wird in eine slug-basierte Route synchronisiert, damit Detailseiten direkt teilbar sind.
+### Ablauf
 
-## Projektstruktur
+1. Das Frontend lädt Marker über Bounds-, Radius- oder Suchanfragen.
+2. Das Backend liest Daten entweder direkt aus dem Cache/den Open-Data-Quellen oder aus PostgreSQL, wenn `DATABASE_URL` gesetzt ist.
+3. Die Open-Data-Schicht normalisiert Badegewässerdaten und leitet daraus `MapItem`-Objekte ab.
+4. Wassernahe POIs werden ergänzt und mit den Badestellen in einer gemeinsamen Kartenrepräsentation zusammengeführt.
+5. Detailseiten werden unter `/<slug>` serverseitig vorbereitet, damit SEO-Metadaten und JSON+LD bereits im ersten HTML enthalten sind.
+
+## API
+
+### `GET /api/health`
+
+Liefert Status, Cache-Alter, Sync-Zeitpunkt, Quell-URLs und die Anzahl der aktuell verfügbaren Datensätze.
+
+### `GET /api/map/v1/bounds`
+
+Liefert Marker für einen Kartenausschnitt.
+
+Query-Parameter:
+
+- `xmin`
+- `ymin`
+- `xmax`
+- `ymax`
+- `type`: `badestelle` oder `poi`
+- `category`
+- `infrastructure`
+
+### `GET /api/map/v1/radius`
+
+Liefert Marker im Umkreis eines Punktes.
+
+Query-Parameter:
+
+- `lat`
+- `lng`
+- `radius_km`
+- `type`
+- `category`
+- `infrastructure`
+
+### `GET /api/map/v1/details`
+
+Liefert ein einzelnes Kartenobjekt.
+
+Query-Parameter:
+
+- `id` oder
+- `slug`
+
+### `GET /api/map/v1/search`
+
+Volltextsuche über Kartenobjekte mit optionalen Filtern.
+
+Query-Parameter:
+
+- `q`
+- `type`
+- `category`
+- `infrastructure`
+- `limit`
+
+## Repository-Struktur
 
 ```text
 .
 ├── backend
+│   ├── alembic
+│   │   └── versions
 │   ├── app
 │   │   ├── api/routes
-│   │   ├── data
+│   │   ├── db
 │   │   ├── models
 │   │   └── services
-│   └── pyproject.toml
+│   │       └── opendata
+│   ├── pyproject.toml
+│   └── requirements.txt
 ├── frontend
 │   ├── assets/css
 │   ├── components
@@ -110,41 +160,25 @@ Badestellen werden aus den Landesdaten erzeugt. Zusätzliche POIs werden aus dem
 │   ├── public
 │   ├── types
 │   ├── utils
+│   ├── app.vue
 │   ├── nuxt.config.ts
 │   └── package.json
-├── screenshot_badestellenkarte.webp
-└── .env.example
+├── scripts
+│   ├── generate_sitemap.py
+│   └── sync_postgres.py
+├── .env.example
+├── package.json
+└── pnpm-workspace.yaml
 ```
-
-## Open-Data-Quellen
-
-Die Anwendung verarbeitet mehrere fachliche CSV-Quellen aus Schleswig-Holstein:
-
-- Badegewässer Stammdaten
-- Badegewässer Einstufung
-- Badegewässer Infrastruktur
-- Badegewässer Saisondauer
-- Badegewässer Messungen
-
-Der Service versucht URLs über die CKAN-API zu ermitteln:
-
-- `https://opendata.schleswig-holstein.de/api/3/action/package_search`
-
-Für mehrere Datensätze sind direkte Fallback-URLs hinterlegt, unter anderem:
-
-- `http://efi2.schleswig-holstein.de/bg/opendata/v_badegewaesser_odata.csv`
-- `http://efi2.schleswig-holstein.de/bg/opendata/v_einstufung_odata.csv`
-- `http://efi2.schleswig-holstein.de/bg/opendata/v_infrastruktur_odata.csv`
-- `http://efi2.schleswig-holstein.de/bg/opendata/v_badesaison_odata.csv`
-- `http://efi2.schleswig-holstein.de/bg/opendata/v_proben_odata.csv`
 
 ## Voraussetzungen
 
 - Node.js 20+
 - `pnpm`
 - Python 3.12+
+- Optional für Persistenz und Suche: PostgreSQL mit PostGIS
 
-## Installation und lokaler Start
+## Setup
 
 ### 1. Umgebungsvariablen anlegen
 
@@ -158,7 +192,7 @@ cp .env.example .env
 pnpm --dir frontend install
 ```
 
-### 3. Backend-Umgebung anlegen
+### 3. Backend-Venv anlegen und Abhängigkeiten installieren
 
 ```bash
 cd backend
@@ -167,7 +201,9 @@ source .venv/bin/activate
 pip install -e .
 ```
 
-### 4. Backend starten
+## Lokale Entwicklung
+
+### Backend starten
 
 ```bash
 cd backend
@@ -175,18 +211,58 @@ source .venv/bin/activate
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### 5. Frontend starten
+### Frontend starten
 
 ```bash
 pnpm dev:frontend
 ```
 
-Lokale URLs:
+Lokale Standard-URLs:
 
 - Frontend: `http://127.0.0.1:3000`
 - Backend: `http://127.0.0.1:8000`
 
-## Build
+## Betriebsmodi des Backends
+
+### Ohne PostgreSQL
+
+Wenn `DATABASE_URL` nicht gesetzt ist, lädt das Backend Daten direkt aus den Open-Data-Quellen und verwendet den lokalen JSON-Cache unter `backend/cache`.
+
+Das ist für Entwicklung und schnelles Testen ausreichend.
+
+### Mit PostgreSQL/PostGIS
+
+Wenn `DATABASE_URL` gesetzt ist, verwendet die API den PostgreSQL-Store. Dabei werden PostGIS-, `unaccent`- und `pg_trgm`-Supportobjekte automatisch angelegt. Suche und Kartenabfragen laufen dann gegen die Datenbank.
+
+Den Datenbestand kannst du mit folgendem Script synchronisieren:
+
+```bash
+pnpm sync:postgres
+```
+
+Das Script lädt die Open-Data-Quellen, normalisiert sie und schreibt Badestellen sowie Kartenobjekte nach PostgreSQL.
+
+## Datenbankmigrationen
+
+Das Repo enthält Alembic-Migrationen unter [`backend/alembic/versions`](./backend/alembic/versions).
+
+Migrationen anwenden:
+
+```bash
+cd backend
+source .venv/bin/activate
+alembic upgrade head
+```
+
+Wichtig: Für Migrations- und Sync-Betrieb muss `DATABASE_URL` gesetzt sein.
+
+## Nützliche Skripte
+
+Frontend starten:
+
+```bash
+pnpm dev:frontend
+```
 
 Frontend-Produktionsbuild:
 
@@ -200,19 +276,25 @@ Frontend-Vorschau:
 pnpm preview:frontend
 ```
 
-Backend produktionsnah:
+Nuxt-Typecheck:
 
 ```bash
-cd backend
-source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+pnpm --dir frontend typecheck
 ```
 
-PostgreSQL-Sync für produktive API-Nutzung mit Persistenz und Volltextsuche:
+PostgreSQL-Sync:
 
 ```bash
 pnpm sync:postgres
 ```
+
+Sitemap generieren:
+
+```bash
+pnpm generate:sitemap
+```
+
+Die Sitemap wird nach [`frontend/public/sitemap.xml`](./frontend/public/sitemap.xml) geschrieben.
 
 ## Umgebungsvariablen
 
@@ -221,7 +303,7 @@ pnpm sync:postgres
 | Variable | Bedeutung |
 | --- | --- |
 | `NUXT_PUBLIC_API_BASE` | Basis-URL des FastAPI-Backends |
-| `NUXT_PUBLIC_SITE_URL` | Öffentliche Basis-URL des Frontends für Canonical-Links und SEO |
+| `NUXT_PUBLIC_SITE_URL` | Öffentliche Basis-URL des Frontends für Canonicals, Sitemap und SEO |
 | `NUXT_PUBLIC_CONTACT_MAIL` | Kontakt-E-Mail für Impressum und Datenschutz |
 | `NUXT_PUBLIC_CONTACT_PHONE` | Telefonnummer für das Impressum |
 | `NUXT_PUBLIC_PRIVACY_CONTACT_PERSON` | Verantwortliche Person für Datenschutzangaben |
@@ -242,146 +324,16 @@ pnpm sync:postgres
 | `REQUEST_TIMEOUT_SECONDS` | Timeout für Requests auf externe Datenquellen |
 | `DATABASE_URL` | Optionale PostgreSQL-Verbindung; wenn gesetzt, liest die API primär aus der Datenbank |
 
-## API-Überblick
+## SEO und Auslieferung
 
-### `GET /api/health`
+- Detailseiten werden serverseitig über [`frontend/pages/[[slug]].vue`](./frontend/pages/[[slug]].vue) vorbereitet.
+- `useSeoMeta` setzt Titel, Beschreibung und Open-Graph-Bilder abhängig vom gewählten Kartenobjekt.
+- JSON+LD wird pro Route erzeugt.
+- Die Sitemap wird per [`scripts/generate_sitemap.py`](./scripts/generate_sitemap.py) generiert.
+- Das Frontend ist als Nuxt-Anwendung mit PWA-Manifest und Service Worker konfiguriert.
 
-Liefert Health-Status, Cache-Alter, Cache-Zeitpunkt, erkannte Quell-URLs und die Anzahl der geladenen Badestellen.
+## Hinweise für Maintainer
 
-### `GET /api/bathing-sites`
-
-Roher fachlicher Zugriff auf normalisierte Badegewässerdaten.
-
-Wichtige Query-Parameter:
-
-- `q`
-- `district`
-- `municipality`
-- `water_category`
-- `bathing_water_type`
-- `water_quality`
-- `infrastructure`
-- `bbox=west,south,east,north`
-- `lat`
-- `lon`
-- `radius_km`
-
-Antwort:
-
-- `items`
-- `total`
-- `filterOptions`
-- `dataUpdatedAt`
-
-### `GET /api/bathing-sites/{site_id}`
-
-Liefert genau eine Badestelle im fachlichen Rohmodell.
-
-### `GET /api/map/v1/bounds`
-
-Marker-API für den sichtbaren Kartenausschnitt.
-
-Pflichtparameter:
-
-- `xmin`
-- `ymin`
-- `xmax`
-- `ymax`
-
-Optionale Filter:
-
-- `type=badestelle|poi`
-- `category`
-- `infrastructure`
-
-Antwort:
-
-- `FeatureCollection`
-- `features`
-- `filters`
-- `total`
-
-### `GET /api/map/v1/radius`
-
-Marker-API für eine Radius-Suche um einen Punkt.
-
-Pflichtparameter:
-
-- `lat`
-- `lng`
-
-Optionale Parameter:
-
-- `radius_km` Standardwert `25`
-- `type=badestelle|poi`
-- `category`
-- `infrastructure`
-
-### `GET /api/map/v1/details`
-
-Detail-API für genau ein Kartenobjekt.
-
-Query:
-
-- `id`
-- oder `slug`
-
-### `GET /api/map/v1/search`
-
-Volltextsuche über PostgreSQL, wenn `DATABASE_URL` gesetzt ist. Ohne PostgreSQL greift ein einfacher Text-Fallback.
-
-Query:
-
-- `q`
-- `type=badestelle|poi`
-- `category`
-- `limit`
-
-## Karten- und UI-Verhalten
-
-- Leaflet wird ausschließlich clientseitig initialisiert.
-- Die Grundkarte kommt von `https://tiles.oklabflensburg.de/gosm/{z}/{x}/{y}.png`.
-- Marker nutzen `leaflet.markercluster`.
-- Bei Kartenbewegungen wird nach `moveend` erneut geladen.
-- Doppelte oder veraltete Antworten werden im Frontend über Request-Sequenzen verworfen.
-- Ausgewählte Marker bleiben auch nach einem Reload des Bounds-Ergebnisses sichtbar.
-- Auf Mobilgeräten erscheinen Detaildaten im Bottom Sheet, auf größeren Viewports in einer Sidebar.
-
-## PWA
-
-Die Anwendung enthält eine klassische PWA-Basis:
-
-- Web App Manifest unter [`frontend/public/site.webmanifest`](./frontend/public/site.webmanifest)
-- Service Worker unter [`frontend/public/sw.js`](./frontend/public/sw.js)
-- Homescreen- und App-Icons unter [`frontend/public/icons`](./frontend/public/icons)
-
-Der Service Worker cached App-Shell und Laufzeit-Assets. Die installierbare PWA ist damit für die Anwendung selbst vorbereitet. Vollständige Offline-Kartennutzung hängt zusätzlich davon ab, ob die benötigten Tile-Requests erreichbar oder bereits gecached sind.
-
-## Rechtliche Seiten
-
-Impressum und Datenschutz beziehen ihre Kontakt- und Adressdaten aus den öffentlichen Nuxt-Runtime-Config-Werten. Die rechtlichen Seiten liegen unter:
-
-- [`frontend/pages/impressum.vue`](./frontend/pages/impressum.vue)
-- [`frontend/pages/datenschutz.vue`](./frontend/pages/datenschutz.vue)
-
-## Besondere technische Details
-
-- Das Backend berücksichtigt problematische CSV-Codierungen und versucht bei fehlerhaften CKAN-Exports auf alternative Originalquellen auszuweichen.
-- Slugs für Badestellen werden aus Region, lesbarem Namen, optionalem Ort und der Original-ID aufgebaut.
-- Infrastrukturdaten werden sowohl für allgemeine Amenities als auch für eine heuristische Accessibility-Ableitung verwendet.
-- Die Karten-API liefert Filteroptionen direkt mit aus, damit das Frontend keine zusätzliche Metadaten-API benötigt.
-- POIs werden aus dem TA.SH-Datensatz `POI der Touristischen Landesdatenbank` geladen und heuristisch auf wassernahe Einträge gefiltert.
-- Mit gesetzter `DATABASE_URL` werden Badestellen und Kartenobjekte in PostgreSQL persistiert; `pnpm sync:postgres` baut den Datenbestand neu auf.
-
-## Entwicklungsnotizen
-
-- Das Backend schreibt den Cache standardmäßig nach `backend/cache/bathing-sites-cache.json`.
-- Die CORS-Liste wird aus `BACKEND_CORS_ORIGINS` kommasepariert gelesen.
-- Das Frontend verwendet öffentliche `NUXT_PUBLIC_*`-Variablen, weil Kontaktinformationen und API-Basis-URL clientseitig benötigt werden.
-
-## Bekannte Grenzen
-
-- Es gibt derzeit keine automatisierten Tests im Repository.
-- Die wassernahe Relevanz der touristischen POIs wird aktuell über Heuristiken auf Basis von Titel- und Beschreibungstexten abgeleitet; das ist fachlich besser als eine lokale JSON-Datei, aber noch kein kuratierter Themenfeed.
-- Die Tile-Auslieferung ist an die Verfügbarkeit des konfigurierten OSM-Servers gebunden.
-- Der Service Worker ist bewusst schlank gehalten und enthält keine komplexe Offline-Synchronisation oder Hintergrundaktualisierung.
+- Die fachliche Quellkonfiguration liegt in [`backend/app/services/opendata/source_queries.toml`](./backend/app/services/opendata/source_queries.toml), nicht mehr hartkodiert in Python.
+- Bilder für Badestellen werden aus Kennzeichen/Datensatzlogik serverseitig erzeugt; im Frontend existiert zusätzlich ein Dummy-Fallback.
+- Das Repo enthält generierte Artefakte wie `frontend/.nuxt`, `frontend/.output` und lokale Virtualenv-/Node-Module-Verzeichnisse. Diese sind keine sinnvolle Quelle für Architekturentscheidungen; maßgeblich sind die Dateien unter `frontend/`, `backend/` und `scripts/`.

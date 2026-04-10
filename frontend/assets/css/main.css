@@ -4,15 +4,24 @@
 
 html {
   height: 100%;
+  font-family: Inter, "Segoe UI", sans-serif;
 }
 
 body {
   @apply m-0 min-h-screen bg-white text-slate-900 antialiased;
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: inherit;
 }
 
 #__nuxt {
   min-height: 100vh;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
 }
 
 .leaflet-container {
