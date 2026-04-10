@@ -19,7 +19,8 @@ async def list_bathing_sites(
     bathing_water_type: str | None = None,
     water_quality: str | None = None,
     infrastructure: str | None = None,
-    bbox: str | None = Query(default=None, description="west,south,east,north"),
+    bbox: str | None = Query(
+        default=None, description="west,south,east,north"),
     lat: float | None = None,
     lon: float | None = None,
     radius_km: float | None = Query(default=None, ge=0),
@@ -41,7 +42,10 @@ async def list_bathing_sites(
 
 
 @router.get("/{site_id}", response_model=BathingSite)
-async def get_bathing_site(site_id: str, service: OpenDataService = Depends(get_service)) -> BathingSite:
+async def get_bathing_site(
+    site_id: str,
+    service: OpenDataService = Depends(get_service)
+) -> BathingSite:
     site = await service.get_site(site_id)
     if site is None:
         raise HTTPException(status_code=404, detail="Bathing site not found")

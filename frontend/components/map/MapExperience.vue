@@ -200,8 +200,16 @@ function handleMapBackgroundClick() {
   }
 }
 
-function handleSearchQueryUpdate(value: string) {
-  state.searchQuery.value = value
+async function handleSearchQueryUpdate(value: string) {
+  const nextValue = value.trimStart()
+  const startsSearch = nextValue.trim().length >= 2
+  const searchChanged = nextValue !== state.searchQuery.value
+
+  if (startsSearch && searchChanged && state.selectedItem.value) {
+    await closeSelection()
+  }
+
+  state.searchQuery.value = nextValue
 }
 
 function handleFiltersUpdate(filters: FilterState) {

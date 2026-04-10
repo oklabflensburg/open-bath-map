@@ -26,13 +26,23 @@
           type="button"
           @click="$emit('select', item.id)"
         >
-          <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-            {{ labelForType(item.type) }}<span v-if="item.category"> · {{ item.category }}</span>
-          </p>
-          <p class="mt-1 text-base font-semibold leading-tight text-slate-900">{{ item.title }}</p>
-          <p v-if="item.city || item.address" class="mt-1 text-sm text-slate-600">
-            {{ formatAddress(item) || item.city }}
-          </p>
+          <div class="flex items-start gap-3">
+            <img
+              v-if="isValidHttpUrl(item.imageUrl)"
+              :src="item.imageUrl || undefined"
+              :alt="item.title"
+              class="h-16 w-16 shrink-0 rounded-lg object-cover"
+            >
+            <div class="min-w-0 flex-1">
+              <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                {{ labelForType(item.type) }}<span v-if="item.category"> · {{ item.category }}</span>
+              </p>
+              <p class="mt-1 text-base font-semibold leading-tight text-slate-900">{{ item.title }}</p>
+              <p v-if="item.city || item.address" class="mt-1 text-sm text-slate-600">
+                {{ formatAddress(item) || item.city }}
+              </p>
+            </div>
+          </div>
         </button>
       </li>
     </ul>
@@ -42,7 +52,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { MapItem } from '../../types/map'
-import { formatAddress, labelForType } from '../../utils/formatters'
+import { formatAddress, isValidHttpUrl, labelForType } from '../../utils/formatters'
 
 const props = defineProps<{
   query: string

@@ -1,0 +1,29 @@
+ckan_api_url = "https://opendata.schleswig-holstein.de/api/3/action/package_search"
+
+[stammdaten]
+term = "badegewasser stammdaten"
+title = "Badegewässer Stammdaten"
+preferred_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_badegewaesser_odata.csv"
+fallback_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_badegewaesser_odata.csv"
+
+[einstufung]
+term = "badegewasser einstufung"
+title = "Badegewässer Einstufung"
+fallback_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_einstufung_odata.csv"
+
+[infrastruktur]
+term = "badegewasser infrastruktur"
+title = "Badegewässer Infrastruktur"
+preferred_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_infrastruktur_odata.csv"
+fallback_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_infrastruktur_odata.csv"
+
+[saison]
+term = "badegewasser saisondauer"
+title = "Badegewässer Saisondauer"
+fallback_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_badesaison_odata.csv"
+
+[messungen]
+term = "badegewasser messungen"
+title = "Badegewässer Messungen"
+preferred_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_proben_odata.csv"
+fallback_url = "http://efi2.schleswig-holstein.de/bg/opendata/v_proben_odata.csv"

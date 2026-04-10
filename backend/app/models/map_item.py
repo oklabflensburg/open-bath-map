@@ -26,6 +26,7 @@ class MapItem(ApiModel):
     address: str | None = None
     postcode: str | None = None
     city: str | None = None
+    municipality: str | None = None
     image_url: str | None = None
     website: str | None = None
     source_name: str | None = None

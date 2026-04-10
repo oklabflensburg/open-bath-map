@@ -1,35 +1,23 @@
-CKAN_API_URL = "https://opendata.schleswig-holstein.de/api/3/action/package_search"
+from __future__ import annotations
 
-SOURCE_QUERIES = {
-    "stammdaten": {
-        "term": "badegewasser stammdaten",
-        "title": "Badegewässer Stammdaten",
-        "preferred_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_badegewaesser_odata.csv",
-        "fallback_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_badegewaesser_odata.csv",
-    },
-    "einstufung": {
-        "term": "badegewasser einstufung",
-        "title": "Badegewässer Einstufung",
-        "fallback_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_einstufung_odata.csv",
-    },
-    "infrastruktur": {
-        "term": "badegewasser infrastruktur",
-        "title": "Badegewässer Infrastruktur",
-        "preferred_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_infrastruktur_odata.csv",
-        "fallback_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_infrastruktur_odata.csv",
-    },
-    "saison": {
-        "term": "badegewasser saisondauer",
-        "title": "Badegewässer Saisondauer",
-        "fallback_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_badesaison_odata.csv",
-    },
-    "messungen": {
-        "term": "badegewasser messungen",
-        "title": "Badegewässer Messungen",
-        "preferred_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_proben_odata.csv",
-        "fallback_url": "http://efi2.schleswig-holstein.de/bg/opendata/v_proben_odata.csv",
-    },
-}
+from pathlib import Path
+import tomllib
+
+_CONFIG_PATH = Path(__file__).with_name("source_queries.toml")
+_CONFIG = tomllib.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+
+
+def _load_source_queries() -> dict[str, dict[str, str]]:
+    return {
+        key: {inner_key: str(inner_value)
+              for inner_key, inner_value in value.items()}
+        for key, value in _CONFIG.items()
+        if isinstance(value, dict)
+    }
+
+
+CKAN_API_URL = str(_CONFIG["ckan_api_url"])
+SOURCE_QUERIES = _load_source_queries()
 
 STAMMDATEN_COLUMNS = [
     "bathing_water_id",
@@ -63,9 +51,23 @@ STAMMDATEN_COLUMNS = [
     "possible_pollutions",
 ]
 
-EINSTUFUNG_COLUMNS = ["bathing_water_id", "from_year", "to_year", "water_quality"]
-INFRASTRUCTURE_COLUMNS = ["bathing_water_id", "infrastructure_id", "infrastructure_label"]
-SAISON_COLUMNS = ["bathing_water_id", "season_start", "season_end", "seasonal_status"]
+EINSTUFUNG_COLUMNS = [
+    "bathing_water_id",
+    "from_year",
+    "to_year",
+    "water_quality"
+]
+INFRASTRUCTURE_COLUMNS = [
+    "bathing_water_id",
+    "infrastructure_id",
+    "infrastructure_label"
+]
+SAISON_COLUMNS = [
+    "bathing_water_id",
+    "season_start",
+    "season_end",
+    "seasonal_status"
+]
 MEASUREMENT_COLUMNS = [
     "bathing_water_id",
     "bathing_water_name",
@@ -113,19 +115,4 @@ POI_INCLUDE_KEYWORDS = [
     "aussichtspunkt",
 ]
 
-POI_EXCLUDE_KEYWORDS = [
-    "hotel",
-    "restaurant",
-    "café",
-    "cafe",
-    "bar",
-    "ferienwohnung",
-    "ferienhaus",
-    "ferienpark",
-    "camping",
-    "wohnmobil",
-    "parkplatz",
-    "golf",
-    "museum",
-    "unterkunft",
-]
+POI_EXCLUDE_KEYWORDS: list[str] = []

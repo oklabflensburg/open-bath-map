@@ -5,17 +5,18 @@ import unicodedata
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
-from psycopg.rows import dict_row
-from psycopg.types.json import Jsonb
-from psycopg_pool import AsyncConnectionPool
+from geoalchemy2 import Geography, WKTElement
+from sqlalchemy import and_, case, cast, delete, distinct, func, or_, select
 
 from app.config import Settings, get_settings
+from app.db.models import BathingSiteRecord, DatasetStateRecord, MapItemRecord
+from app.db.session import create_session, dispose_engine, ensure_database_support_objects, get_database_url
 from app.models.bathing_site import BathingSite, BathingSiteListResponse, FilterOptions, SiteCoordinates
 from app.models.map_item import MapFeature, MapFeatureCollection, MapFeatureProperties, MapFilters, MapItem, MapItemSearchResponse, MapPointGeometry
+from app.services.opendata.utils import build_bathing_image_url
 
 
 class PostgresStore:
-    _pool: AsyncConnectionPool | None = None
     _initialized = False
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -28,95 +29,52 @@ class PostgresStore:
     async def connect(self) -> None:
         if not self.is_enabled:
             return
-        if PostgresStore._pool is None:
-            PostgresStore._pool = AsyncConnectionPool(
-                conninfo=self.settings.database_url,
-                min_size=1,
-                max_size=4,
-                open=False,
-            )
-            await PostgresStore._pool.open()
-            await PostgresStore._pool.wait()
+        database_url = get_database_url(self.settings)
+        if not database_url:
+            raise RuntimeError("DATABASE_URL is not configured")
         if not PostgresStore._initialized:
-            await self._init_schema()
+            await ensure_database_support_objects(self.settings)
             PostgresStore._initialized = True
 
     async def close(self) -> None:
-        if PostgresStore._pool is not None:
-            await PostgresStore._pool.close()
-            PostgresStore._pool = None
+        if PostgresStore._initialized:
+            await dispose_engine()
             PostgresStore._initialized = False
 
     async def ensure_seeded(self, loader: Callable[[], Awaitable[Any]]) -> None:
         if not self.is_enabled:
             return
         await self.connect()
-        state = await self._fetch_one("SELECT synced_at FROM dataset_state WHERE id = 1")
+        async with create_session(self.settings) as session:
+            state = await session.get(DatasetStateRecord, 1)
         if state is not None:
             return
         await loader()
 
     async def save_dataset(self, dataset: Any, bathing_map_items: list[MapItem] | None = None) -> None:
         await self.connect()
-        assert PostgresStore._pool is not None
         if bathing_map_items is None:
-            bathing_map_items = self._to_bathing_map_items(dataset.items, dataset.data_updated_at)
-        async with PostgresStore._pool.connection() as conn:
-            async with conn.transaction():
-                async with conn.cursor() as cur:
-                    await cur.execute("DELETE FROM bathing_sites")
-                    await cur.execute("DELETE FROM map_items")
-                    await cur.executemany(
-                        """
-                        INSERT INTO bathing_sites (
-                            id, name, short_name, common_name, municipality, district, region,
-                            water_category, coastal_water, bathing_water_type, bathing_spot_length_m,
-                            description, bathing_spot_information, impacts_on_bathing_water,
-                            possible_pollutions, infrastructure, water_quality, water_quality_from_year,
-                            water_quality_to_year, seasonal_status, season_start, season_end,
-                            last_sample_date, source_url, source_dataset, search_text, lat, lon
-                        ) VALUES (
-                            %(id)s, %(name)s, %(short_name)s, %(common_name)s, %(municipality)s, %(district)s, %(region)s,
-                            %(water_category)s, %(coastal_water)s, %(bathing_water_type)s, %(bathing_spot_length_m)s,
-                            %(description)s, %(bathing_spot_information)s, %(impacts_on_bathing_water)s,
-                            %(possible_pollutions)s, %(infrastructure)s, %(water_quality)s, %(water_quality_from_year)s,
-                            %(water_quality_to_year)s, %(seasonal_status)s, %(season_start)s, %(season_end)s,
-                            %(last_sample_date)s, %(source_url)s, %(source_dataset)s, %(search_text)s, %(lat)s, %(lon)s
-                        )
-                        """,
-                        [self._bathing_site_params(item) for item in dataset.items],
+            bathing_map_items = self._to_bathing_map_items(
+                dataset.items, dataset.data_updated_at)
+        async with create_session(self.settings) as session:
+            async with session.begin():
+                await session.execute(delete(BathingSiteRecord))
+                await session.execute(delete(MapItemRecord))
+                await session.execute(delete(DatasetStateRecord))
+                session.add_all([BathingSiteRecord(
+                    **self._bathing_site_params(item)) for item in dataset.items])
+                session.add_all(
+                    [MapItemRecord(**self._map_item_params(item))
+                     for item in [*dataset.poi_items, *bathing_map_items]]
+                )
+                session.add(
+                    DatasetStateRecord(
+                        id=1,
+                        data_updated_at=dataset.data_updated_at,
+                        synced_at=dataset.cached_at,
+                        source_urls=dataset.source_urls,
                     )
-                    await cur.executemany(
-                        """
-                    INSERT INTO map_items (
-                        id, slug, type, title, description, category, lat, lng, address, postcode,
-                        city, image_url, website, source_name, content_license, tags, water_quality, accessibility,
-                        possible_pollutions, seasonal_status, season_start, season_end,
-                        last_update, district, opening_hours, amenities, search_text
-                    ) VALUES (
-                        %(id)s, %(slug)s, %(type)s, %(title)s, %(description)s, %(category)s, %(lat)s, %(lng)s, %(address)s, %(postcode)s,
-                        %(city)s, %(image_url)s, %(website)s, %(source_name)s, %(content_license)s, %(tags)s, %(water_quality)s, %(accessibility)s,
-                        %(possible_pollutions)s, %(seasonal_status)s, %(season_start)s, %(season_end)s,
-                        %(last_update)s, %(district)s, %(opening_hours)s, %(amenities)s, %(search_text)s
-                    )
-                        """,
-                        [self._map_item_params(item) for item in [*dataset.poi_items, *bathing_map_items]],
-                    )
-                    await cur.execute(
-                        """
-                        INSERT INTO dataset_state (id, data_updated_at, synced_at, source_urls)
-                        VALUES (1, %s, %s, %s)
-                        ON CONFLICT (id) DO UPDATE
-                        SET data_updated_at = EXCLUDED.data_updated_at,
-                            synced_at = EXCLUDED.synced_at,
-                            source_urls = EXCLUDED.source_urls
-                        """,
-                        (
-                            dataset.data_updated_at,
-                            dataset.cached_at,
-                            Jsonb(dataset.source_urls),
-                        ),
-                    )
+                )
 
     async def list_sites(
         self,
@@ -133,91 +91,111 @@ class PostgresStore:
         lon: float | None,
         radius_km: float | None,
     ) -> BathingSiteListResponse:
-        where: list[str] = []
-        select_params: list[Any] = []
-        where_params: list[Any] = []
-        order_params: list[Any] = []
-        select_distance = ""
-        select_rank = ""
-        order_by = "ORDER BY district NULLS LAST, municipality NULLS LAST, name"
+        filters: list[Any] = []
+        search_rank = None
+        distance_expr = None
 
         if q:
-            where.append(f"{self._search_vector_sql()} @@ websearch_to_tsquery('german', %s)")
-            where_params.append(q)
-            select_rank = f", ts_rank({self._search_vector_sql()}, websearch_to_tsquery('german', %s)) AS search_rank"
-            select_params.append(q)
-            order_by = "ORDER BY search_rank DESC, name"
+            search_vector = func.to_tsvector(
+                "german", BathingSiteRecord.search_text)
+            search_query = func.websearch_to_tsquery("german", q)
+            filters.append(search_vector.op("@@")(search_query))
+            search_rank = func.ts_rank(search_vector, search_query)
         if district:
-            where.append("district = %s")
-            where_params.append(district)
+            filters.append(BathingSiteRecord.district == district)
         if municipality:
-            where.append("municipality = %s")
-            where_params.append(municipality)
+            filters.append(BathingSiteRecord.municipality == municipality)
         if water_category:
-            where.append("water_category = %s")
-            where_params.append(water_category)
+            filters.append(BathingSiteRecord.water_category == water_category)
         if bathing_water_type:
-            where.append("bathing_water_type = %s")
-            where_params.append(bathing_water_type)
+            filters.append(
+                BathingSiteRecord.bathing_water_type == bathing_water_type)
         if water_quality:
-            where.append("water_quality = %s")
-            where_params.append(water_quality)
+            filters.append(BathingSiteRecord.water_quality == water_quality)
         if infrastructure:
-            where.append("%s = ANY(infrastructure)")
-            where_params.append(infrastructure)
+            filters.append(
+                BathingSiteRecord.infrastructure.any(infrastructure))
         if bbox:
-            west, south, east, north = [float(part) for part in bbox.split(",")]
-            where.append("lon BETWEEN %s AND %s")
-            where_params.extend([west, east])
-            where.append("lat BETWEEN %s AND %s")
-            where_params.extend([south, north])
+            west, south, east, north = [
+                float(part) for part in bbox.split(",")]
+            filters.append(
+                func.ST_Intersects(
+                    BathingSiteRecord.geom,
+                    func.ST_MakeEnvelope(west, south, east, north, 4326),
+                )
+            )
         if lat is not None and lon is not None:
-            distance_sql = self._distance_sql()
-            select_distance = f", {distance_sql} AS distance_km"
-            select_params.extend(self._distance_params(lat, lon))
+            search_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
+            distance_expr = func.ST_DistanceSphere(
+                BathingSiteRecord.geom, search_point) / 1000
             if radius_km is not None:
-                where.insert(0, f"{distance_sql} <= %s")
-                where_params = [*self._distance_params(lat, lon), radius_km, *where_params]
-            order_by = "ORDER BY distance_km NULLS LAST, name"
+                filters.append(
+                    func.ST_DWithin(
+                        cast(BathingSiteRecord.geom, Geography),
+                        cast(search_point, Geography),
+                        radius_km * 1000,
+                    )
+                )
 
-        rows = await self._fetch_all(
-            f"""
-            SELECT *, lat, lon {select_rank} {select_distance}
-            FROM bathing_sites
-            {self._where_clause(where)}
-            {order_by}
-            """,
-            [*select_params, *where_params, *order_params],
-        )
+        async with create_session(self.settings) as session:
+            if distance_expr is not None:
+                result = await session.exec(
+                    select(BathingSiteRecord, distance_expr.label("distance_km"))
+                    .where(*filters)
+                    .order_by(distance_expr.nulls_last(), BathingSiteRecord.name)
+                )
+                items = [
+                    self._record_to_bathing_site(self._unwrap_record(record)).model_copy(
+                        update={"distance_km": distance_km_value})
+                    for record, distance_km_value in result.all()
+                ]
+            else:
+                statement = select(BathingSiteRecord).where(*filters)
+                if search_rank is not None:
+                    statement = statement.order_by(
+                        search_rank.desc(), BathingSiteRecord.name)
+                else:
+                    statement = statement.order_by(
+                        BathingSiteRecord.district.nulls_last(),
+                        BathingSiteRecord.municipality.nulls_last(),
+                        BathingSiteRecord.name,
+                    )
+                result = await session.exec(statement)
+                items = [self._record_to_bathing_site(
+                    self._unwrap_record(record)) for record in result.all()]
+
         filters = await self._build_filter_options()
-        state = await self._get_dataset_state()
-        items = [self._row_to_bathing_site(row) for row in rows]
+        state = await self._get_dataset_state_record()
         return BathingSiteListResponse(
             items=items,
             total=len(items),
             filter_options=filters,
-            data_updated_at=state["data_updated_at"],
+            data_updated_at=state.data_updated_at,
         )
 
     async def get_site(self, site_id: str) -> BathingSite | None:
-        row = await self._fetch_one("SELECT * FROM bathing_sites WHERE id = %s", (site_id,))
-        return self._row_to_bathing_site(row) if row else None
+        async with create_session(self.settings) as session:
+            record = await session.get(BathingSiteRecord, site_id)
+        return self._record_to_bathing_site(record) if record else None
 
     async def health(self) -> dict[str, Any]:
-        state = await self._get_dataset_state()
-        item_count_row = await self._fetch_one(
-            """
-            SELECT
-              (SELECT COUNT(*) FROM bathing_sites) + (SELECT COUNT(*) FROM map_items WHERE type = 'poi') AS item_count
-            """
-        )
-        age = int((datetime.utcnow() - state["synced_at"].replace(tzinfo=None)).total_seconds())
+        state = await self._get_dataset_state_record()
+        async with create_session(self.settings) as session:
+            bathing_site_count = await session.scalar(
+                select(func.count()).select_from(BathingSiteRecord)
+            )
+            poi_count = await session.scalar(
+                select(func.count()).select_from(
+                    MapItemRecord).where(MapItemRecord.type == "poi")
+            )
+        age = int(
+            (datetime.utcnow() - state.synced_at.replace(tzinfo=None)).total_seconds())
         return {
             "status": "ok",
             "cache_age_seconds": age,
-            "cached_at": state["synced_at"],
-            "source_urls": state["source_urls"],
-            "item_count": item_count_row["item_count"],
+            "cached_at": state.synced_at,
+            "source_urls": state.source_urls,
+            "item_count": (bathing_site_count or 0) + (poi_count or 0),
         }
 
     async def get_map_items_by_bounds(
@@ -252,20 +230,42 @@ class PostgresStore:
         category: str | None,
         infrastructure: str | None,
     ) -> MapFeatureCollection:
-        rows = await self._fetch_all(
-            f"""
-            SELECT *, {self._distance_sql()} AS distance_km
-            FROM map_items
-            {self._where_clause(self._map_where(item_type, category, infrastructure) + ([f"{self._distance_sql()} <= %s"] if radius_km is not None else []))}
-            ORDER BY distance_km NULLS LAST, title
-            """,
-            [
-                *self._distance_params(lat, lng),
-                *self._map_params(item_type, category, infrastructure),
-                *([*self._distance_params(lat, lng), radius_km] if radius_km is not None else []),
-            ],
-        )
-        visible_items = [self._row_to_map_item(row) for row in rows]
+        filters: list[Any] = []
+        if item_type in {"badestelle", "poi"}:
+            filters.append(MapItemRecord.type == item_type)
+        if category:
+            filters.append(MapItemRecord.category == category)
+        if infrastructure:
+            filters.append(
+                or_(
+                    MapItemRecord.amenities.any(infrastructure),
+                    MapItemRecord.accessibility == infrastructure,
+                )
+            )
+
+        search_point = func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326)
+        distance_expr = func.ST_DistanceSphere(MapItemRecord.geom, search_point) / 1000
+        if radius_km is not None:
+            filters.append(
+                func.ST_DWithin(
+                    cast(MapItemRecord.geom, Geography),
+                    cast(search_point, Geography),
+                    radius_km * 1000,
+                )
+            )
+
+        async with create_session(self.settings) as session:
+            result = await session.exec(
+                select(MapItemRecord, distance_expr.label("distance_km"))
+                .where(*filters)
+                .order_by(distance_expr.nulls_last(), MapItemRecord.title)
+            )
+            visible_items = [
+                self._record_to_map_item(self._unwrap_record(record)).model_copy(
+                    update={"distance_km": distance_km_value})
+                for record, distance_km_value in result.all()
+            ]
+
         all_items = await self._query_map_items(
             item_type=item_type,
             category=category,
@@ -274,13 +274,18 @@ class PostgresStore:
         return self._to_feature_collection(visible_items, all_items)
 
     async def get_map_item_details(self, *, item_id: str | None, slug: str | None) -> MapItem | None:
-        if item_id:
-            row = await self._fetch_one("SELECT * FROM map_items WHERE id = %s", (item_id,))
-        elif slug:
-            row = await self._fetch_one("SELECT * FROM map_items WHERE slug = %s", (slug,))
-        else:
-            row = None
-        return self._row_to_map_item(row) if row else None
+        if not item_id and not slug:
+            return None
+
+        async with create_session(self.settings) as session:
+            statement = select(MapItemRecord)
+            if item_id:
+                statement = statement.where(MapItemRecord.id == item_id)
+            else:
+                statement = statement.where(MapItemRecord.slug == slug)
+            record = await session.scalar(statement)
+
+        return self._record_to_map_item(record) if record else None
 
     async def search_map_items(
         self,
@@ -293,74 +298,62 @@ class PostgresStore:
     ) -> MapItemSearchResponse:
         normalized_query = self._normalize_search_text(q)
         search_terms = self._search_terms(q)
-        base_where: list[str] = []
-        params: list[Any] = []
+        filters: list[Any] = []
         if item_type in {"badestelle", "poi"}:
-            base_where.append("type = %s")
-            params.append(item_type)
+            filters.append(MapItemRecord.type == item_type)
         if category:
-            base_where.append("category = %s")
-            params.append(category)
+            filters.append(MapItemRecord.category == category)
         if infrastructure:
-            base_where.append("(%s = ANY(amenities) OR accessibility = %s)")
-            params.extend([infrastructure, infrastructure])
-        where = [*base_where]
-        query_params: list[Any] = []
-        if search_terms:
-            where.append(f"{self._search_vector_sql()} @@ plainto_tsquery('german', %s)")
-            query_params.append(q)
-            term_predicates: list[str] = []
-            for _term in search_terms:
-                term_predicates.append(
-                    "("
-                    f"{self._normalized_search_sql()} LIKE '%%' || %s || '%%' "
-                    f"OR word_similarity(%s, {self._normalized_search_sql()}) >= 0.6"
-                    ")"
+            filters.append(
+                or_(
+                    MapItemRecord.amenities.any(infrastructure),
+                    MapItemRecord.accessibility == infrastructure,
                 )
-            where.append(" AND ".join(term_predicates))
-            for term in search_terms:
-                query_params.extend([term, term])
-        rows = await self._fetch_all(
-            f"""
-            SELECT *,
-                   ts_rank({self._search_vector_sql()}, plainto_tsquery('german', %s)) AS search_rank,
-                   similarity({self._normalized_search_sql()}, %s) AS similarity_rank,
-                   word_similarity(%s, {self._normalized_search_sql()}) AS word_similarity_rank
-            FROM map_items
-            {self._where_clause(where)}
-            ORDER BY
-                CASE WHEN {self._search_vector_sql()} @@ plainto_tsquery('german', %s) THEN 0 ELSE 1 END,
-                GREATEST(
-                    ts_rank({self._search_vector_sql()}, plainto_tsquery('german', %s)),
-                    similarity({self._normalized_search_sql()}, %s),
-                    word_similarity(%s, {self._normalized_search_sql()})
-                ) DESC,
-                title
-            LIMIT %s
-            """,
-            [
-                q,
-                normalized_query,
-                normalized_query,
-                *params,
-                *query_params,
-                q,
-                q,
-                normalized_query,
-                normalized_query,
-                limit,
-            ],
-        )
-        total_row = await self._fetch_one(
-            f"""
-            SELECT COUNT(*) AS total
-            FROM map_items
-            {self._where_clause(where)}
-            """,
-            [*params, *query_params],
-        )
-        items = [self._row_to_map_item(row) for row in rows]
-        return MapItemSearchResponse(items=items, total=total_row["total"] if total_row else len(items))
+            )
+
+        search_vector = func.to_tsvector("german", MapItemRecord.search_text)
+        ts_query = func.plainto_tsquery("german", q)
+        normalized_search = func.immutable_unaccent(
+            func.lower(MapItemRecord.search_text))
+        fts_match = search_vector.op("@@")(ts_query)
+
+        if search_terms:
+            term_predicates = [
+                or_(
+                    normalized_search.contains(term),
+                    func.word_similarity(term, normalized_search) >= 0.6,
+                )
+                for term in search_terms
+            ]
+            filters.append(and_(fts_match, *term_predicates))
+        else:
+            filters.append(fts_match)
+
+        search_rank = func.ts_rank(search_vector, ts_query)
+        similarity_rank = func.similarity(normalized_search, normalized_query)
+        word_similarity_rank = func.word_similarity(
+            normalized_query, normalized_search)
+        ordering_rank = func.greatest(
+            search_rank, similarity_rank, word_similarity_rank)
+
+        async with create_session(self.settings) as session:
+            total = await session.scalar(
+                select(func.count()).select_from(MapItemRecord).where(*filters)
+            )
+            result = await session.exec(
+                select(MapItemRecord)
+                .where(*filters)
+                .order_by(
+                    case((fts_match, 0), else_=1),
+                    ordering_rank.desc(),
+                    MapItemRecord.title,
+                )
+                .limit(limit)
+            )
+            items = [self._record_to_map_item(self._unwrap_record(record))
+                     for record in result.all()]
+
+        return MapItemSearchResponse(items=items, total=total or 0)
 
     async def _query_map_items(
         self,
@@ -369,196 +362,118 @@ class PostgresStore:
         category: str | None,
         infrastructure: str | None,
     ) -> list[MapItem]:
-        rows = await self._fetch_all(
-            f"""
-            SELECT *
-            FROM map_items
-            {self._where_clause(self._map_where(item_type, category, infrastructure))}
-            ORDER BY city NULLS LAST, category NULLS LAST, title
-            """,
-            self._map_params(item_type, category, infrastructure),
-        )
-        return [self._row_to_map_item(row) for row in rows]
-
-    def _map_where(self, item_type: str | None, category: str | None, infrastructure: str | None) -> list[str]:
-        where: list[str] = []
+        filters: list[Any] = []
         if item_type in {"badestelle", "poi"}:
-            where.append("type = %s")
+            filters.append(MapItemRecord.type == item_type)
         if category:
-            where.append("category = %s")
+            filters.append(MapItemRecord.category == category)
         if infrastructure:
-            where.append("(%s = ANY(amenities) OR accessibility = %s)")
-        return where
+            filters.append(
+                or_(
+                    MapItemRecord.amenities.any(infrastructure),
+                    MapItemRecord.accessibility == infrastructure,
+                )
+            )
 
-    def _map_params(self, item_type: str | None, category: str | None, infrastructure: str | None) -> list[Any]:
-        params: list[Any] = []
-        if item_type in {"badestelle", "poi"}:
-            params.append(item_type)
-        if category:
-            params.append(category)
-        if infrastructure:
-            params.extend([infrastructure, infrastructure])
-        return params
+        async with create_session(self.settings) as session:
+            result = await session.exec(
+                select(MapItemRecord)
+                .where(*filters)
+                .order_by(
+                    MapItemRecord.city.nulls_last(),
+                    MapItemRecord.category.nulls_last(),
+                    MapItemRecord.title,
+                )
+            )
+            return [self._record_to_map_item(self._unwrap_record(record)) for record in result.all()]
 
     async def _build_filter_options(self) -> FilterOptions:
-        row = await self._fetch_one(
-            """
-            SELECT
-              ARRAY(SELECT DISTINCT district FROM bathing_sites WHERE district IS NOT NULL ORDER BY district) AS districts,
-              ARRAY(SELECT DISTINCT municipality FROM bathing_sites WHERE municipality IS NOT NULL ORDER BY municipality) AS municipalities,
-              ARRAY(SELECT DISTINCT water_category FROM bathing_sites WHERE water_category IS NOT NULL ORDER BY water_category) AS water_categories,
-              ARRAY(SELECT DISTINCT coastal_water FROM bathing_sites WHERE coastal_water IS NOT NULL ORDER BY coastal_water) AS coastal_waters,
-              ARRAY(SELECT DISTINCT bathing_water_type FROM bathing_sites WHERE bathing_water_type IS NOT NULL ORDER BY bathing_water_type) AS bathing_water_types,
-              ARRAY(SELECT DISTINCT water_quality FROM bathing_sites WHERE water_quality IS NOT NULL ORDER BY water_quality) AS water_qualities,
-              ARRAY(
-                SELECT DISTINCT infrastructure
-                FROM bathing_sites, unnest(infrastructure) AS infrastructure
-                WHERE infrastructure IS NOT NULL
-                ORDER BY infrastructure
-              ) AS infrastructures
-            """
-        )
-        return FilterOptions(**row)
+        async with create_session(self.settings) as session:
+            districts = await session.exec(
+                select(distinct(BathingSiteRecord.district))
+                .where(BathingSiteRecord.district.is_not(None))
+                .order_by(BathingSiteRecord.district)
+            )
+            municipalities = await session.exec(
+                select(distinct(BathingSiteRecord.municipality))
+                .where(BathingSiteRecord.municipality.is_not(None))
+                .order_by(BathingSiteRecord.municipality)
+            )
+            water_categories = await session.exec(
+                select(distinct(BathingSiteRecord.water_category))
+                .where(BathingSiteRecord.water_category.is_not(None))
+                .order_by(BathingSiteRecord.water_category)
+            )
+            coastal_waters = await session.exec(
+                select(distinct(BathingSiteRecord.coastal_water))
+                .where(BathingSiteRecord.coastal_water.is_not(None))
+                .order_by(BathingSiteRecord.coastal_water)
+            )
+            bathing_water_types = await session.exec(
+                select(distinct(BathingSiteRecord.bathing_water_type))
+                .where(BathingSiteRecord.bathing_water_type.is_not(None))
+                .order_by(BathingSiteRecord.bathing_water_type)
+            )
+            water_qualities = await session.exec(
+                select(distinct(BathingSiteRecord.water_quality))
+                .where(BathingSiteRecord.water_quality.is_not(None))
+                .order_by(BathingSiteRecord.water_quality)
+            )
+            infrastructure_values = await session.exec(
+                select(distinct(func.unnest(BathingSiteRecord.infrastructure)))
+                .where(BathingSiteRecord.infrastructure.is_not(None))
+                .order_by(func.unnest(BathingSiteRecord.infrastructure))
+            )
+
+            return FilterOptions(
+                districts=[value for value in districts.all() if value],
+                municipalities=[
+                    value for value in municipalities.all() if value],
+                water_categories=[
+                    value for value in water_categories.all() if value],
+                coastal_waters=[
+                    value for value in coastal_waters.all() if value],
+                bathing_water_types=[
+                    value for value in bathing_water_types.all() if value],
+                water_qualities=[
+                    value for value in water_qualities.all() if value],
+                infrastructures=[
+                    value for value in infrastructure_values.all() if value],
+            )
 
     async def _get_dataset_state(self) -> dict[str, Any]:
         state = await self._fetch_one("SELECT * FROM dataset_state WHERE id = 1")
         if state is None:
-            raise RuntimeError("PostgreSQL dataset is empty. Run the sync script or seed on first access.")
+            raise RuntimeError(
+                "PostgreSQL dataset is empty. Run the sync script or seed on first access.")
+        return state
+
+    async def _get_dataset_state_record(self) -> DatasetStateRecord:
+        async with create_session(self.settings) as session:
+            state = await session.get(DatasetStateRecord, 1)
+        if state is None:
+            raise RuntimeError(
+                "PostgreSQL dataset is empty. Run the sync script or seed on first access.")
         return state
 
     async def _fetch_one(self, query: str, params: Any = ()) -> dict[str, Any] | None:
         await self.connect()
-        assert PostgresStore._pool is not None
-        async with PostgresStore._pool.connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(query, params)
-                return await cur.fetchone()
+        async with create_session(self.settings) as session:
+            connection = await session.connection()
+            result = await connection.exec_driver_sql(query, tuple(params) if isinstance(params, list) else params)
+            row = result.mappings().one_or_none()
+            return dict(row) if row is not None else None
 
     async def _fetch_all(self, query: str, params: Any = ()) -> list[dict[str, Any]]:
         await self.connect()
-        assert PostgresStore._pool is not None
-        async with PostgresStore._pool.connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(query, params)
-                return await cur.fetchall()
-
-    async def _init_schema(self) -> None:
-        statements = [
-            "CREATE EXTENSION IF NOT EXISTS unaccent",
-            "CREATE EXTENSION IF NOT EXISTS pg_trgm",
-            """
-            CREATE OR REPLACE FUNCTION immutable_unaccent(TEXT)
-            RETURNS TEXT
-            LANGUAGE sql
-            IMMUTABLE
-            PARALLEL SAFE
-            AS $$
-                SELECT public.unaccent($1)
-            $$;
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS dataset_state (
-              id SMALLINT PRIMARY KEY,
-              data_updated_at TIMESTAMPTZ NOT NULL,
-              synced_at TIMESTAMPTZ NOT NULL,
-              source_urls JSONB NOT NULL DEFAULT '{}'::jsonb
-            )
-            """,
-            """
-            CREATE TABLE IF NOT EXISTS bathing_sites (
-              id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              short_name TEXT,
-              common_name TEXT,
-              municipality TEXT,
-              district TEXT,
-              region TEXT,
-              water_category TEXT,
-              coastal_water TEXT,
-              bathing_water_type TEXT,
-              bathing_spot_length_m DOUBLE PRECISION,
-              description TEXT,
-              bathing_spot_information TEXT,
-              impacts_on_bathing_water TEXT,
-              possible_pollutions TEXT,
-              infrastructure TEXT[] NOT NULL DEFAULT '{}',
-              water_quality TEXT,
-              water_quality_from_year INTEGER,
-              water_quality_to_year INTEGER,
-              seasonal_status TEXT,
-              season_start DATE,
-              season_end DATE,
-              last_sample_date DATE,
-              source_url TEXT NOT NULL,
-              source_dataset TEXT NOT NULL,
-              search_text TEXT NOT NULL,
-              lat DOUBLE PRECISION NOT NULL,
-              lon DOUBLE PRECISION NOT NULL
-            )
-            """,
-            f"CREATE INDEX IF NOT EXISTS idx_bathing_sites_search_german ON bathing_sites USING GIN ({self._search_vector_sql()})",
-            f"CREATE INDEX IF NOT EXISTS idx_bathing_sites_search_trgm ON bathing_sites USING GIN ({self._normalized_search_sql()} gin_trgm_ops)",
-            "CREATE INDEX IF NOT EXISTS idx_bathing_sites_coords ON bathing_sites (lat, lon)",
-            """
-            CREATE TABLE IF NOT EXISTS map_items (
-              id TEXT PRIMARY KEY,
-              slug TEXT NOT NULL UNIQUE,
-              type TEXT NOT NULL,
-              title TEXT NOT NULL,
-              description TEXT,
-              category TEXT,
-              lat DOUBLE PRECISION NOT NULL,
-              lng DOUBLE PRECISION NOT NULL,
-              address TEXT,
-              postcode TEXT,
-              city TEXT,
-              image_url TEXT,
-              website TEXT,
-              source_name TEXT,
-              content_license TEXT,
-              tags TEXT[] NOT NULL DEFAULT '{}',
-              water_quality TEXT,
-              accessibility TEXT,
-              possible_pollutions TEXT,
-              seasonal_status TEXT,
-              season_start DATE,
-              season_end DATE,
-              last_update TIMESTAMPTZ,
-              district TEXT,
-              opening_hours TEXT,
-              amenities TEXT[] NOT NULL DEFAULT '{}',
-              search_text TEXT NOT NULL
-            )
-            """,
-            "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS source_name TEXT",
-            "ALTER TABLE map_items ADD COLUMN IF NOT EXISTS content_license TEXT",
-            f"CREATE INDEX IF NOT EXISTS idx_map_items_search_german ON map_items USING GIN ({self._search_vector_sql()})",
-            f"CREATE INDEX IF NOT EXISTS idx_map_items_search_trgm ON map_items USING GIN ({self._normalized_search_sql()} gin_trgm_ops)",
-            "CREATE INDEX IF NOT EXISTS idx_map_items_coords ON map_items (lat, lng)",
-            "CREATE INDEX IF NOT EXISTS idx_map_items_type_category ON map_items (type, category)",
-        ]
-        assert PostgresStore._pool is not None
-        async with PostgresStore._pool.connection() as conn:
-            async with conn.transaction():
-                for statement in statements:
-                    await conn.execute(statement)
+        async with create_session(self.settings) as session:
+            connection = await session.connection()
+            result = await connection.exec_driver_sql(query, tuple(params) if isinstance(params, list) else params)
+            return [dict(row) for row in result.mappings().all()]
 
     @staticmethod
     def _where_clause(where: list[str]) -> str:
         return f"WHERE {' AND '.join(where)}" if where else ""
-
-    @staticmethod
-    def _distance_sql() -> str:
-        return (
-            "6371 * acos(least(1, greatest(-1, "
-            "cos(radians(%s)) * cos(radians(lat)) * cos(radians(lng) - radians(%s)) + "
-            "sin(radians(%s)) * sin(radians(lat))"
-            ")))"
-        )
-
-    @staticmethod
-    def _distance_params(lat: float, lng: float) -> list[float]:
-        return [lat, lng, lat]
 
     @staticmethod
     def _search_vector_sql() -> str:
@@ -570,7 +485,8 @@ class PostgresStore:
 
     @staticmethod
     def _normalize_search_text(value: str) -> str:
-        normalized = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode("ascii")
+        normalized = unicodedata.normalize("NFKD", value).encode(
+            "ascii", "ignore").decode("ascii")
         normalized = re.sub(r"\s+", " ", normalized.lower()).strip()
         return normalized
 
@@ -584,6 +500,7 @@ class PostgresStore:
             **item.model_dump(),
             "lat": item.coordinates.lat,
             "lon": item.coordinates.lon,
+            "geom": WKTElement(f"POINT({item.coordinates.lon} {item.coordinates.lat})", srid=4326),
             "search_text": " ".join(
                 filter(
                     None,
@@ -605,6 +522,7 @@ class PostgresStore:
     def _map_item_params(item: MapItem) -> dict[str, Any]:
         return {
             **item.model_dump(),
+            "geom": WKTElement(f"POINT({item.lng} {item.lat})", srid=4326),
             "search_text": " ".join(
                 filter(
                     None,
@@ -614,6 +532,7 @@ class PostgresStore:
                         item.category,
                         item.address,
                         item.city,
+                        item.municipality,
                         item.district,
                         " ".join(item.tags),
                     ],
@@ -654,6 +573,56 @@ class PostgresStore:
         )
 
     @staticmethod
+    def _record_to_bathing_site(record: BathingSiteRecord) -> BathingSite:
+        return BathingSite(
+            id=record.id,
+            name=record.name,
+            short_name=record.short_name,
+            common_name=record.common_name,
+            municipality=record.municipality,
+            district=record.district,
+            region=record.region,
+            water_category=record.water_category,
+            coastal_water=record.coastal_water,
+            bathing_water_type=record.bathing_water_type,
+            bathing_spot_length_m=record.bathing_spot_length_m,
+            description=record.description,
+            bathing_spot_information=record.bathing_spot_information,
+            impacts_on_bathing_water=record.impacts_on_bathing_water,
+            possible_pollutions=record.possible_pollutions,
+            infrastructure=record.infrastructure or [],
+            water_quality=record.water_quality,
+            water_quality_from_year=record.water_quality_from_year,
+            water_quality_to_year=record.water_quality_to_year,
+            seasonal_status=record.seasonal_status,
+            season_start=record.season_start,
+            season_end=record.season_end,
+            last_sample_date=record.last_sample_date,
+            source_url=record.source_url,
+            source_dataset=record.source_dataset,
+            coordinates=SiteCoordinates(lat=record.lat, lon=record.lon),
+        )
+
+    @staticmethod
+    def _unwrap_record(record: Any) -> Any:
+        if hasattr(record, "_mapping"):
+            return next(iter(record._mapping.values()))
+        return record
+
+    @staticmethod
+    def _build_missing_bathing_image_url(
+        item_id: str | None,
+        item_type: str | None,
+        district: str | None,
+        image_url: str | None,
+    ) -> str | None:
+        if image_url or item_type != "badestelle" or not item_id:
+            return image_url
+
+        site_id = item_id.removeprefix("badestelle-")
+        return build_bathing_image_url(site_id, district)
+
+    @staticmethod
     def _row_to_map_item(row: dict[str, Any]) -> MapItem:
         return MapItem(
             id=row["id"],
@@ -667,7 +636,13 @@ class PostgresStore:
             address=row["address"],
             postcode=row["postcode"],
             city=row["city"],
-            image_url=row["image_url"],
+            municipality=row.get("municipality"),
+            image_url=PostgresStore._build_missing_bathing_image_url(
+                row["id"],
+                row["type"],
+                row.get("district"),
+                row["image_url"],
+            ),
             website=row["website"],
             source_name=row.get("source_name"),
             content_license=row.get("content_license"),
@@ -686,20 +661,61 @@ class PostgresStore:
         )
 
     @staticmethod
+    def _record_to_map_item(record: MapItemRecord) -> MapItem:
+        return MapItem(
+            id=record.id,
+            slug=record.slug,
+            type=record.type,  # type: ignore[arg-type]
+            title=record.title,
+            description=record.description,
+            category=record.category,
+            lat=record.lat,
+            lng=record.lng,
+            address=record.address,
+            postcode=record.postcode,
+            city=record.city,
+            municipality=record.municipality,
+            image_url=PostgresStore._build_missing_bathing_image_url(
+                record.id,
+                record.type,
+                record.district,
+                record.image_url,
+            ),
+            website=record.website,
+            source_name=record.source_name,
+            content_license=record.content_license,
+            tags=record.tags or [],
+            water_quality=record.water_quality,
+            accessibility=record.accessibility,
+            possible_pollutions=record.possible_pollutions,
+            seasonal_status=record.seasonal_status,
+            season_start=record.season_start,
+            season_end=record.season_end,
+            last_update=record.last_update,
+            district=record.district,
+            opening_hours=record.opening_hours,
+            amenities=record.amenities or [],
+        )
+
+    @staticmethod
     def _to_bathing_map_items(items: list[BathingSite], data_updated_at: datetime) -> list[MapItem]:
         mapped: list[MapItem] = []
         for site in items:
-            last_update = datetime.combine(site.last_sample_date, datetime.min.time()) if site.last_sample_date else data_updated_at
+            last_update = datetime.combine(site.last_sample_date, datetime.min.time(
+            )) if site.last_sample_date else data_updated_at
             description = site.bathing_spot_information or site.description or site.impacts_on_bathing_water
             category = site.bathing_water_type or site.water_category or "Badestelle"
             city = site.municipality or site.district
-            address = ", ".join(part for part in [site.municipality, site.district] if part) or None
-            tags = sorted({tag for tag in [*site.infrastructure, site.water_category, site.coastal_water, site.region] if tag})
+            address = ", ".join(
+                part for part in [site.municipality, site.district] if part) or None
+            tags = sorted({tag for tag in [
+                          *site.infrastructure, site.water_category, site.coastal_water, site.region] if tag})
             title = site.common_name or site.short_name or site.name
             mapped.append(
                 MapItem(
                     id=f"badestelle-{site.id}",
-                    slug=PostgresStore._slugify(f"{title}-{site.municipality or site.district or ''}-{site.id}"),
+                    slug=PostgresStore._slugify(
+                        f"{title}-{site.municipality or site.district or ''}-{site.id}"),
                     type="badestelle",
                     title=title,
                     description=description,
@@ -708,7 +724,8 @@ class PostgresStore:
                     lng=site.coordinates.lon,
                     address=address,
                     city=city,
-                    image_url=None,
+                    municipality=site.municipality,
+                    image_url=build_bathing_image_url(site.id, site.district),
                     website=site.source_url,
                     tags=tags,
                     water_quality=site.water_quality,
@@ -744,7 +761,8 @@ class PostgresStore:
             features=[
                 MapFeature(
                     id=item.id,
-                    geometry=MapPointGeometry(coordinates=(item.lng, item.lat)),
+                    geometry=MapPointGeometry(
+                        coordinates=(item.lng, item.lat)),
                     properties=MapFeatureProperties(
                         id=item.id,
                         slug=item.slug,
@@ -759,7 +777,8 @@ class PostgresStore:
             ],
             filters=MapFilters(
                 types=sorted({item.type for item in all_items}),
-                categories=sorted({item.category for item in all_items if item.category}),
+                categories=sorted(
+                    {item.category for item in all_items if item.category}),
                 cities=sorted({item.city for item in all_items if item.city}),
                 tags=sorted({tag for item in all_items for tag in item.tags}),
                 infrastructures=sorted(

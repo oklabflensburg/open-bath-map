@@ -78,6 +78,8 @@
 
 <script setup lang="ts">
 const config = useRuntimeConfig()
+const siteUrl = useSiteUrl()
+const pageUrl = toAbsoluteUrl('/datenschutz', siteUrl)
 
 const fullStreetAddress = computed(
   () => `${config.public.addressStreet} ${config.public.addressHouseNumber}`,
@@ -93,4 +95,30 @@ useSeoMeta({
   title: 'Datenschutz | Badestellenkarte',
   description: 'Datenschutzhinweise der Badestellenkarte für Schleswig-Holstein.',
 })
+
+useJsonLd(() => ({
+  '@context': 'https://schema.org',
+  '@type': 'WebPage',
+  name: 'Datenschutz',
+  url: pageUrl,
+  description: 'Datenschutzhinweise der Badestellenkarte für Schleswig-Holstein.',
+  inLanguage: 'de-DE',
+  isPartOf: {
+    '@type': 'WebSite',
+    name: 'Badestellenkarte',
+    url: toAbsoluteUrl('/', siteUrl),
+  },
+  about: {
+    '@type': 'Organization',
+    name: config.public.addressName,
+    email: config.public.contactMail || undefined,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: fullStreetAddress.value,
+      postalCode: config.public.addressPostalCode || undefined,
+      addressLocality: config.public.addressCity || undefined,
+      addressCountry: 'DE',
+    },
+  },
+}), 'route-json-ld')
 </script>

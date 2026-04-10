@@ -33,6 +33,7 @@ from .constants import (
 from .dataset import CachedDataset
 from .utils import (
     as_sorted_values,
+    build_bathing_image_url,
     clean_text,
     haversine_km,
     is_redundant_slug_part,
@@ -352,7 +353,8 @@ class OpenDataService:
                     lng=site.coordinates.lon,
                     address=address,
                     city=city,
-                    image_url=None,
+                    municipality=site.municipality,
+                    image_url=build_bathing_image_url(site.id, site.district),
                     website=site.source_url,
                     tags=sorted({tag for tag in tags if tag}),
                     water_quality=site.water_quality,
@@ -593,6 +595,7 @@ class OpenDataService:
             address=address,
             postcode=postcode,
             city=city,
+            municipality=city,
             image_url=image_url,
             website=website,
             source_name="Touristische Landesdatenbank Schleswig-Holstein (TA.SH)",

@@ -4,12 +4,11 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_ENV_PATH = Path(__file__).resolve().parents[2] / ".env"
-BACKEND_ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=(ROOT_ENV_PATH, BACKEND_ENV_PATH),
+        env_file=ROOT_ENV_PATH,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -25,7 +24,11 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        return [origin.strip() for origin in self.backend_cors_origins.split(",") if origin.strip()]
+        return [
+            origin.strip()
+            for origin in self.backend_cors_origins.split(",")
+            if origin.strip()
+        ]
 
 
 @lru_cache

@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from app.models.map_item import MapFeatureCollection, MapItem, MapItemSearchResponse
+from app.models.map_item import (
+    MapFeatureCollection, MapItem, MapItemSearchResponse
+)
 from app.services.opendata import OpenDataService
 
 router = APIRouter(prefix="/api/map/v1", tags=["map"])

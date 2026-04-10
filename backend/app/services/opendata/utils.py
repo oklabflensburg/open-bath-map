@@ -1,6 +1,25 @@
 import math
 import re
+from urllib.parse import quote
 from datetime import date, datetime
+
+DISTRICT_LICENSE_CODES: dict[str, str] = {
+    "Dithmarschen": "HEI",
+    "Flensburg, Stadt": "FL",
+    "Herzogtum Lauenburg": "RZ",
+    "Kiel, Landeshauptstadt": "KI",
+    "Lübeck, Hansestadt": "HL",
+    "Neumünster, Stadt": "NMS",
+    "Nordfriesland": "NF",
+    "Ostholstein": "OH",
+    "Pinneberg": "PI",
+    "Plön": "PLÖ",
+    "Rendsburg-Eckernförde": "RD",
+    "Schleswig-Flensburg": "SL",
+    "Segeberg": "SE",
+    "Steinburg": "IZ",
+    "Stormarn": "OD",
+}
 
 
 def parse_date(value: str | None) -> date | None:
@@ -50,6 +69,30 @@ def clean_text(value: str | None) -> str | None:
 
 def as_sorted_values(values: list[str | None]) -> list[str]:
     return sorted({value for value in values if value})
+
+
+def district_license_code(value: str | None) -> str | None:
+    if not value:
+        return None
+    return DISTRICT_LICENSE_CODES.get(value)
+
+
+def build_bathing_image_url(site_id: str | None, district: str | None) -> str | None:
+    if not site_id:
+        return None
+
+    district_code = district_license_code(district)
+    if not district_code:
+        return None
+
+    match = re.search(r"(\d{4})$", site_id)
+    if not match:
+        return None
+
+    return (
+        "https://efi2.schleswig-holstein.de/bg/files/Fotos/"
+        f"Fotos_{quote(district_code)}/{match.group(1)}_Foto_Internet.JPG"
+    )
 
 
 def slugify(value: str) -> str:

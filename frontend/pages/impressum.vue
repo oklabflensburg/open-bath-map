@@ -53,6 +53,8 @@
 
 <script setup lang="ts">
 const config = useRuntimeConfig()
+const siteUrl = useSiteUrl()
+const pageUrl = toAbsoluteUrl('/impressum', siteUrl)
 
 const fullStreetAddress = computed(
   () => `${config.public.addressStreet} ${config.public.addressHouseNumber}`,
@@ -70,4 +72,35 @@ useSeoMeta({
   title: 'Impressum | Badestellenkarte',
   description: 'Impressum der Badestellenkarte für Schleswig-Holstein.',
 })
+
+useJsonLd(() => ([
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: 'Impressum',
+    url: pageUrl,
+    description: 'Impressum der Badestellenkarte für Schleswig-Holstein.',
+    isPartOf: {
+      '@type': 'WebSite',
+      name: 'Badestellenkarte',
+      url: toAbsoluteUrl('/', siteUrl),
+    },
+    inLanguage: 'de-DE',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: config.public.addressName,
+    email: config.public.contactMail || undefined,
+    telephone: config.public.contactPhone || undefined,
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: fullStreetAddress.value,
+      postalCode: config.public.addressPostalCode || undefined,
+      addressLocality: config.public.addressCity || undefined,
+      addressCountry: 'DE',
+    },
+    url: toAbsoluteUrl('/', siteUrl),
+  },
+]), 'route-json-ld')
 </script>
