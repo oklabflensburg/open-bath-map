@@ -32,6 +32,7 @@
               :src="item.imageUrl || undefined"
               :alt="item.title"
               class="h-16 w-16 shrink-0 rounded-lg object-cover"
+              @error="applyImageFallback"
             >
             <div class="min-w-0 flex-1">
               <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
@@ -53,6 +54,7 @@
 import { computed } from 'vue'
 import type { MapItem } from '../../types/map'
 import { formatAddress, isValidHttpUrl, labelForType } from '../../utils/formatters'
+import { applyImageFallback } from '../../composables/useImageFallback'
 
 const props = defineProps<{
   query: string

@@ -43,6 +43,7 @@
             :src="item.imageUrl || undefined"
             :alt="item.title"
             class="h-56 w-full object-cover"
+            @error="applyImageFallback"
           >
           <div class="p-5">
             <div class="mb-3 flex items-start justify-between gap-4">
@@ -119,6 +120,7 @@
 import { computed } from 'vue'
 import type { FilterState, MapFilterOptions, MapItem } from '../../types/map'
 import { formatAddress, formatDate, formatSeasonDuration, isValidHttpUrl, labelForType } from '../../utils/formatters'
+import { applyImageFallback } from '../../composables/useImageFallback'
 
 const props = defineProps<{
   item: MapItem | null

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 480" role="img" aria-labelledby="title desc">
+  <title id="title">Platzhalterbild Badestelle</title>
+  <desc id="desc">Illustration mit Himmel, Sonne, Wasser und Strand als Ersatzbild.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#dff3ff"/>
+      <stop offset="100%" stop-color="#9fd3f2"/>
+    </linearGradient>
+    <linearGradient id="water" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#4da3d9"/>
+      <stop offset="100%" stop-color="#1c6a9a"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="480" fill="url(#sky)"/>
+  <circle cx="514" cy="100" r="42" fill="#ffd66b"/>
+  <path d="M0 248c70-24 131-24 183 0s114 24 186 0 137-24 271 0v136H0z" fill="url(#water)"/>
+  <path d="M0 355c88-15 153-15 221 0s126 15 200 0 133-15 219 0v125H0z" fill="#efd7a1"/>
+  <path d="M95 311c32-22 72-17 98 0s56 17 88 0 71-21 113 0" fill="none" stroke="#ffffff" stroke-linecap="round" stroke-width="10"/>
+  <text x="320" y="430" fill="#13405c" font-family="Georgia, serif" font-size="28" text-anchor="middle">Badestellenkarte</text>
+</svg>

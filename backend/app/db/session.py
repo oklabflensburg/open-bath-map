@@ -78,6 +78,14 @@ async def ensure_database_support_objects(
                 """
             )
         )
+        await conn.execute(
+            text(
+                """
+                ALTER TABLE IF EXISTS map_items
+                ADD COLUMN IF NOT EXISTS municipality TEXT
+                """
+            )
+        )
 
 
 @asynccontextmanager
