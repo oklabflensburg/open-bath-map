@@ -1,17 +1,18 @@
 <template>
   <aside class="hidden h-full w-[26rem] shrink-0 border-l border-slate-300 bg-slate-100 md:flex md:flex-col">
-    <div class="flex-1 overflow-y-auto px-6 py-8">
+    <div ref="contentElement" class="flex-1 overflow-y-auto px-6 py-8">
       <header class="mb-6 space-y-1">
         <h1 class="text-3xl font-bold leading-tight text-slate-900">Badestellenkarte</h1>
         <p class="text-lg text-slate-600">Open Data für Badestellen und POIs in Schleswig-Holstein</p>
       </header>
 
-      <div class="mb-6 inline-flex rounded-full border border-slate-300 bg-white p-1">
+      <div class="mb-6 flex justify-center">
+        <div class="inline-flex rounded-full border border-slate-300 bg-white p-1">
         <button
           class="rounded-full px-4 py-2 text-sm font-medium transition"
           :class="activeTab === 'info' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
           type="button"
-          @click="activeTab = 'info'"
+          @click="setActiveTab('info')"
         >
           Info
         </button>
@@ -19,7 +20,7 @@
           class="rounded-full px-4 py-2 text-sm font-medium transition"
           :class="activeTab === 'search' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
           type="button"
-          @click="activeTab = 'search'"
+          @click="setActiveTab('search')"
         >
           Suche &amp; Filter
         </button>
@@ -27,10 +28,11 @@
           class="rounded-full px-4 py-2 text-sm font-medium transition"
           :class="activeTab === 'result' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
           type="button"
-          @click="activeTab = 'result'"
+          @click="setActiveTab('result')"
         >
           Marker
         </button>
+        </div>
       </div>
 
       <section v-if="activeTab === 'info'">
@@ -181,12 +183,17 @@ const emit = defineEmits<{
   'update:search': [value: string]
 }>()
 
+const contentElement = ref<HTMLElement | null>(null)
 const activeTab = ref<'info' | 'search' | 'result'>('info')
 
 const formattedAddress = computed(() => props.item ? formatAddress(props.item) : null)
 const formattedDate = computed(() => formatDate(props.item?.lastUpdate))
 const formattedSeasonDuration = computed(() => formatSeasonDuration(props.item))
 const showImage = computed(() => isValidHttpUrl(props.item?.imageUrl))
+
+watch(activeTab, () => {
+  scrollToTop()
+})
 
 watch(() => props.item, (item) => {
   activeTab.value = item ? 'result' : activeTab.value === 'result' ? 'info' : activeTab.value
@@ -195,5 +202,13 @@ watch(() => props.item, (item) => {
 function closeDetails() {
   activeTab.value = 'info'
   emit('close')
+}
+
+function setActiveTab(tab: 'info' | 'search' | 'result') {
+  activeTab.value = tab
+}
+
+function scrollToTop() {
+  contentElement.value?.scrollTo({ top: 0, behavior: 'auto' })
 }
 </script>

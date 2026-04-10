@@ -19,12 +19,13 @@
         ref="contentElement"
         class="flex-1 overflow-y-auto px-4 pb-24"
       >
-        <div class="mb-4 inline-flex rounded-full border border-slate-300 bg-white p-1">
+        <div class="mb-4 flex justify-center">
+          <div class="inline-flex rounded-full border border-slate-300 bg-white p-1">
           <button
             class="rounded-full px-4 py-2 text-sm font-medium transition"
             :class="activeTab === 'info' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
             type="button"
-            @click="activeTab = 'info'"
+            @click="setActiveTab('info')"
           >
             Info
           </button>
@@ -32,7 +33,7 @@
             class="rounded-full px-4 py-2 text-sm font-medium transition"
             :class="activeTab === 'search' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
             type="button"
-            @click="activeTab = 'search'"
+            @click="setActiveTab('search')"
           >
             Suche &amp; Filter
           </button>
@@ -40,10 +41,11 @@
             class="rounded-full px-4 py-2 text-sm font-medium transition"
             :class="activeTab === 'result' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
             type="button"
-            @click="activeTab = 'result'"
+            @click="setActiveTab('result')"
           >
             Marker
           </button>
+          </div>
         </div>
 
         <section v-if="activeTab === 'info'">
@@ -192,6 +194,10 @@ watch(() => props.item, (item) => {
   activeTab.value = item ? 'result' : activeTab.value === 'result' ? 'info' : activeTab.value
 })
 
+watch(activeTab, () => {
+  scrollToTop()
+})
+
 function isAtTop(scrollTop: number) {
   return scrollTop <= 0
 }
@@ -277,5 +283,13 @@ function onSheetClick() {
 function closeDetails() {
   activeTab.value = 'info'
   emit('closeDetails')
+}
+
+function setActiveTab(tab: 'info' | 'search' | 'result') {
+  activeTab.value = tab
+}
+
+function scrollToTop() {
+  contentElement.value?.scrollTo({ top: 0, behavior: 'auto' })
 }
 </script>
