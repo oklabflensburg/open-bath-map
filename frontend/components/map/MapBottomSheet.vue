@@ -19,82 +19,117 @@
         ref="contentElement"
         class="flex-1 overflow-y-auto px-4 pb-24"
       >
-        <div class="mb-4">
-          <MapFilters
-            :filters="filters"
-            :is-locating="isLocating"
-            :location-error="locationError"
-            :options="options"
-            :search-query="searchQuery"
-            @locate="$emit('locate')"
-            @reset="$emit('resetFilters')"
-            @update:filters="$emit('update:filters', $event)"
-            @update:search="$emit('update:search', $event)"
-          />
-        </div>
-
-        <p v-if="fetchError" class="mb-4 text-sm text-rose-700">
-          {{ fetchError }}
-        </p>
-
-        <div class="mb-4">
-          <MapSearchResults
-            :is-searching="isSearching"
-            :items="searchResults"
-            :query="searchQuery"
-            :selected-item-id="item?.id ?? null"
-            :total="searchTotal"
-            @clear="$emit('clearSearch')"
-            @select="$emit('selectSearchResult', $event)"
-          />
-        </div>
-
-        <div v-if="!item">
-          <MapIntro />
-        </div>
-
-        <article v-else class="rounded-xl border border-slate-300 bg-white">
-          <img
-            v-if="showImage"
-            :src="item.imageUrl || undefined"
-            :alt="item.title"
-            class="h-48 w-full rounded-t-xl object-cover"
-            @error="applyImageFallback"
+        <div class="mb-4 inline-flex rounded-full border border-slate-300 bg-white p-1">
+          <button
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            :class="activeTab === 'info' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+            type="button"
+            @click="activeTab = 'info'"
           >
-          <div class="p-4">
-            <div class="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  {{ labelForType(item.type) }}<span v-if="item.category"> · {{ item.category }}</span>
-                </p>
-                <h2 class="mt-1 text-xl font-bold leading-tight text-slate-900">{{ item.title }}</h2>
-              </div>
-              <button class="rounded-full border border-slate-300 p-2 text-slate-600" type="button" @click.stop="$emit('closeDetails')">
-                <span class="sr-only">Schließen</span>
-                ×
-              </button>
-            </div>
+            Info
+          </button>
+          <button
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            :class="activeTab === 'search' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+            type="button"
+            @click="activeTab = 'search'"
+          >
+            Suche &amp; Filter
+          </button>
+          <button
+            class="rounded-full px-4 py-2 text-sm font-medium transition"
+            :class="activeTab === 'result' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+            type="button"
+            @click="activeTab = 'result'"
+          >
+            Marker
+          </button>
+        </div>
 
-            <ul class="space-y-3 text-sm leading-6 text-slate-700">
-              <li v-if="formattedAddress">{{ formattedAddress }}</li>
-              <li v-if="item.description">{{ item.description }}</li>
-              <li v-if="item.type === 'badestelle' && item.waterQuality">Wasserqualität: {{ item.waterQuality }}</li>
-              <li v-if="item.type === 'badestelle' && formattedSeasonDuration">Badegewässer Saisondauer: {{ formattedSeasonDuration }}</li>
-              <li v-if="item.accessibility">Zugang: {{ item.accessibility }}</li>
-              <li v-if="item.type === 'badestelle' && item.possiblePollutions">Mögliche Belastungen: {{ item.possiblePollutions }}</li>
-              <li v-if="item.type === 'poi' && item.openingHours">Öffnungszeiten: {{ item.openingHours }}</li>
-              <li v-if="item.amenities.length">{{ item.type === 'badestelle' ? 'Ausstattung' : 'Angebot' }}: {{ item.amenities.join(', ') }}</li>
-              <li v-if="formattedDate">Aktualisiert: {{ formattedDate }}</li>
-            </ul>
+        <section v-if="activeTab === 'info'">
+          <MapIntro />
+        </section>
+
+        <section v-else-if="activeTab === 'search'">
+          <div class="mb-4">
+            <MapFilters
+              :filters="filters"
+              :is-locating="isLocating"
+              :location-error="locationError"
+              :options="options"
+              :search-query="searchQuery"
+              @locate="$emit('locate')"
+              @reset="$emit('resetFilters')"
+              @update:filters="$emit('update:filters', $event)"
+              @update:search="$emit('update:search', $event)"
+            />
           </div>
-        </article>
+
+          <p v-if="fetchError" class="mb-4 text-sm text-rose-700">
+            {{ fetchError }}
+          </p>
+
+          <div class="mb-4">
+            <MapSearchResults
+              :is-searching="isSearching"
+              :items="searchResults"
+              :query="searchQuery"
+              :selected-item-id="item?.id ?? null"
+              :total="searchTotal"
+              @clear="$emit('clearSearch')"
+              @select="$emit('selectSearchResult', $event)"
+            />
+          </div>
+        </section>
+
+        <section v-else>
+          <div v-if="!item" class="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+            Wähle einen Marker auf der Karte oder einen Treffer aus der Suche, um hier die Details zu sehen.
+          </div>
+
+          <article v-else class="rounded-xl border border-slate-300 bg-white">
+            <img
+              v-if="showImage"
+              :src="item.imageUrl || undefined"
+              :alt="item.title"
+              class="h-48 w-full rounded-t-xl object-cover"
+              @error="applyImageFallback"
+            >
+            <div class="p-4">
+              <div class="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                    {{ labelForType(item.type) }}<span v-if="item.category"> · {{ item.category }}</span>
+                  </p>
+                  <h2 class="mt-1 text-xl font-bold leading-tight text-slate-900">{{ item.title }}</h2>
+                </div>
+                <button class="rounded-full border border-slate-300 p-2 text-slate-600" type="button" @click.stop="closeDetails">
+                  <span class="sr-only">Schließen</span>
+                  ×
+                </button>
+              </div>
+
+              <ul class="space-y-3 text-sm leading-6 text-slate-700">
+                <li v-if="formattedAddress">{{ formattedAddress }}</li>
+                <li v-if="item.description">{{ item.description }}</li>
+                <li v-if="item.type === 'badestelle' && item.waterQuality">Wasserqualität: {{ item.waterQuality }}</li>
+                <li v-if="item.type === 'badestelle' && formattedSeasonDuration">Badegewässer Saisondauer: {{ formattedSeasonDuration }}</li>
+                <li v-if="item.accessibility">Zugang: {{ item.accessibility }}</li>
+                <li v-if="item.type === 'badestelle' && item.possiblePollutions">Mögliche Belastungen: {{ item.possiblePollutions }}</li>
+                <li v-if="item.type === 'poi' && item.openingHours">Öffnungszeiten: {{ item.openingHours }}</li>
+                <li v-if="item.amenities.length">{{ item.type === 'badestelle' ? 'Ausstattung' : 'Angebot' }}: {{ item.amenities.join(', ') }}</li>
+                <li v-if="formattedDate">Aktualisiert: {{ formattedDate }}</li>
+              </ul>
+            </div>
+          </article>
+        </section>
       </div>
     </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { FilterState, MapFilterOptions, MapItem } from '../../types/map'
 import { formatAddress, formatDate, formatSeasonDuration, isValidHttpUrl, labelForType } from '../../utils/formatters'
 import { applyImageFallback } from '../../composables/useImageFallback'
@@ -126,6 +161,7 @@ const emit = defineEmits<{
 }>()
 
 const contentElement = ref<HTMLElement | null>(null)
+const activeTab = ref<'info' | 'search' | 'result'>('info')
 const isDragging = ref(false)
 const translateY = ref(0)
 const openHeight = '58dvh'
@@ -152,6 +188,23 @@ const sheetStyle = computed(() => {
   }
 })
 
+watch(() => props.item, (item) => {
+  activeTab.value = item ? 'result' : activeTab.value === 'result' ? 'info' : activeTab.value
+})
+
+function isAtTop(scrollTop: number) {
+  return scrollTop <= 0
+}
+
+function isAtBottom(element: HTMLElement | null, scrollTop: number) {
+  if (!element) {
+    return false
+  }
+
+  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+  return scrollTop >= maxScrollTop - 1
+}
+
 function onTouchStart(event: TouchEvent) {
   const touch = event.touches[0]
   if (!touch) {
@@ -160,7 +213,10 @@ function onTouchStart(event: TouchEvent) {
 
   touchStartY = touch.clientY
   startScrollTop = contentElement.value?.scrollTop ?? 0
-  canDragSheet = props.isOpen && startScrollTop <= 0
+  canDragSheet = props.isOpen && (
+    isAtTop(startScrollTop)
+    || isAtBottom(contentElement.value, startScrollTop)
+  )
   isDragging.value = false
 }
 
@@ -180,7 +236,11 @@ function onTouchMove(event: TouchEvent) {
   }
 
   const scrollTop = contentElement.value?.scrollTop ?? 0
-  if (!canDragSheet && scrollTop <= 0 && deltaY > 0) {
+  if (
+    !canDragSheet
+    && deltaY > 0
+    && (isAtTop(scrollTop) || isAtBottom(contentElement.value, scrollTop))
+  ) {
     canDragSheet = true
   }
 
@@ -212,5 +272,10 @@ function onSheetClick() {
   if (!props.isOpen) {
     emit('open')
   }
+}
+
+function closeDetails() {
+  activeTab.value = 'info'
+  emit('closeDetails')
 }
 </script>

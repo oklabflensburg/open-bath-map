@@ -6,36 +6,71 @@
         <p class="text-lg text-slate-600">Open Data für Badestellen und POIs in Schleswig-Holstein</p>
       </header>
 
-      <MapFilters
-        :filters="filters"
-        :is-locating="isLocating"
-        :location-error="locationError"
-        :options="options"
-        :search-query="searchQuery"
-        @locate="$emit('locate')"
-        @reset="$emit('resetFilters')"
-        @update:filters="$emit('update:filters', $event)"
-        @update:search="$emit('update:search', $event)"
-      />
-
-      <p v-if="fetchError" class="mt-4 text-sm text-rose-700">
-        {{ fetchError }}
-      </p>
-
-      <div class="mt-4">
-        <MapSearchResults
-          :is-searching="isSearching"
-          :items="searchResults"
-          :query="searchQuery"
-          :selected-item-id="item?.id ?? null"
-          :total="searchTotal"
-          @clear="$emit('clearSearch')"
-          @select="$emit('selectSearchResult', $event)"
-        />
+      <div class="mb-6 inline-flex rounded-full border border-slate-300 bg-white p-1">
+        <button
+          class="rounded-full px-4 py-2 text-sm font-medium transition"
+          :class="activeTab === 'info' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+          type="button"
+          @click="activeTab = 'info'"
+        >
+          Info
+        </button>
+        <button
+          class="rounded-full px-4 py-2 text-sm font-medium transition"
+          :class="activeTab === 'search' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+          type="button"
+          @click="activeTab = 'search'"
+        >
+          Suche &amp; Filter
+        </button>
+        <button
+          class="rounded-full px-4 py-2 text-sm font-medium transition"
+          :class="activeTab === 'result' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'"
+          type="button"
+          @click="activeTab = 'result'"
+        >
+          Marker
+        </button>
       </div>
 
-      <div class="mt-6">
-        <MapIntro v-if="!item" />
+      <section v-if="activeTab === 'info'">
+        <MapIntro />
+      </section>
+
+      <section v-else-if="activeTab === 'search'">
+        <MapFilters
+          :filters="filters"
+          :is-locating="isLocating"
+          :location-error="locationError"
+          :options="options"
+          :search-query="searchQuery"
+          @locate="$emit('locate')"
+          @reset="$emit('resetFilters')"
+          @update:filters="$emit('update:filters', $event)"
+          @update:search="$emit('update:search', $event)"
+        />
+
+        <p v-if="fetchError" class="mt-4 text-sm text-rose-700">
+          {{ fetchError }}
+        </p>
+
+        <div class="mt-4">
+          <MapSearchResults
+            :is-searching="isSearching"
+            :items="searchResults"
+            :query="searchQuery"
+            :selected-item-id="item?.id ?? null"
+            :total="searchTotal"
+            @clear="$emit('clearSearch')"
+            @select="$emit('selectSearchResult', $event)"
+          />
+        </div>
+      </section>
+
+      <section v-else class="mt-1">
+        <div v-if="!item" class="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-600">
+          Wähle einen Marker auf der Karte oder einen Treffer aus der Suche, um hier die Details zu sehen.
+        </div>
 
         <article v-else class="overflow-hidden rounded-xl border border-slate-300 bg-white">
           <img
@@ -53,7 +88,7 @@
                 </p>
                 <h2 class="mt-1 text-2xl font-bold leading-tight text-slate-900">{{ item.title }}</h2>
               </div>
-              <button class="rounded-full border border-slate-300 p-2 text-slate-600 transition hover:bg-slate-100" type="button" @click="$emit('close')">
+              <button class="rounded-full border border-slate-300 p-2 text-slate-600 transition hover:bg-slate-100" type="button" @click="closeDetails">
                 <span class="sr-only">Schließen</span>
                 ×
               </button>
@@ -107,7 +142,7 @@
             </ul>
           </div>
         </article>
-      </div>
+      </section>
     </div>
 
     <div class="border-t border-slate-300 px-6 py-4">
@@ -117,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { FilterState, MapFilterOptions, MapItem } from '../../types/map'
 import { formatAddress, formatDate, formatSeasonDuration, isValidHttpUrl, labelForType } from '../../utils/formatters'
 import { applyImageFallback } from '../../composables/useImageFallback'
@@ -136,7 +171,7 @@ const props = defineProps<{
   locationError: string | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   clearSearch: []
   close: []
   locate: []
@@ -146,8 +181,19 @@ defineEmits<{
   'update:search': [value: string]
 }>()
 
+const activeTab = ref<'info' | 'search' | 'result'>('info')
+
 const formattedAddress = computed(() => props.item ? formatAddress(props.item) : null)
 const formattedDate = computed(() => formatDate(props.item?.lastUpdate))
 const formattedSeasonDuration = computed(() => formatSeasonDuration(props.item))
 const showImage = computed(() => isValidHttpUrl(props.item?.imageUrl))
+
+watch(() => props.item, (item) => {
+  activeTab.value = item ? 'result' : activeTab.value === 'result' ? 'info' : activeTab.value
+})
+
+function closeDetails() {
+  activeTab.value = 'info'
+  emit('close')
+}
 </script>
