@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes.bathing_sites import router as bathing_sites_router
 from app.api.routes.health import router as health_router
 from app.api.routes.map import router as map_router
 from app.config import get_settings
@@ -23,5 +22,4 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(bathing_sites_router)
 app.include_router(map_router)

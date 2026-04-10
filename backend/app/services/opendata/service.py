@@ -14,7 +14,7 @@ from typing import Any
 import httpx
 
 from app.config import Settings, get_settings
-from app.models.bathing_site import BathingSite, BathingSiteListResponse, FilterOptions, SiteCoordinates
+from app.models.bathing_site import BathingSite, SiteCoordinates
 from app.models.map_item import MapFeature, MapFeatureCollection, MapFeatureProperties, MapFilters, MapItem, MapItemSearchResponse, MapPointGeometry
 from app.services.postgres_store import PostgresStore
 
@@ -32,7 +32,6 @@ from .constants import (
 )
 from .dataset import CachedDataset
 from .utils import (
-    as_sorted_values,
     build_bathing_image_url,
     clean_text,
     haversine_km,
@@ -62,94 +61,6 @@ class OpenDataService:
         fresh = await self._build_dataset()
         self._write_cache(fresh)
         return fresh
-
-    async def list_sites(
-        self,
-        q: str | None = None,
-        district: str | None = None,
-        municipality: str | None = None,
-        water_category: str | None = None,
-        bathing_water_type: str | None = None,
-        water_quality: str | None = None,
-        infrastructure: str | None = None,
-        bbox: str | None = None,
-        lat: float | None = None,
-        lon: float | None = None,
-        radius_km: float | None = None,
-    ) -> BathingSiteListResponse:
-        if self.postgres.is_enabled:
-            await self.postgres.ensure_seeded(self.sync_database)
-            return await self.postgres.list_sites(
-                q=q,
-                district=district,
-                municipality=municipality,
-                water_category=water_category,
-                bathing_water_type=bathing_water_type,
-                water_quality=water_quality,
-                infrastructure=infrastructure,
-                bbox=bbox,
-                lat=lat,
-                lon=lon,
-                radius_km=radius_km,
-            )
-
-        dataset = await self.get_dataset()
-        items = [site.model_copy(deep=True) for site in dataset.items]
-
-        if q:
-            query = q.casefold()
-            items = [
-                site
-                for site in items
-                if query in " ".join(
-                    [site.name, site.municipality or "", site.district or "", site.region or ""],
-                ).casefold()
-            ]
-
-        if district:
-            items = [site for site in items if site.district == district]
-        if municipality:
-            items = [site for site in items if site.municipality == municipality]
-        if water_category:
-            items = [site for site in items if site.water_category == water_category]
-        if bathing_water_type:
-            items = [site for site in items if site.bathing_water_type == bathing_water_type]
-        if water_quality:
-            items = [site for site in items if site.water_quality == water_quality]
-        if infrastructure:
-            items = [site for site in items if infrastructure in site.infrastructure]
-
-        if bbox:
-            west, south, east, north = [float(part) for part in bbox.split(",")]
-            items = [
-                site
-                for site in items
-                if west <= site.coordinates.lon <= east and south <= site.coordinates.lat <= north
-            ]
-
-        if lat is not None and lon is not None:
-            for site in items:
-                site.distance_km = round(haversine_km(lat, lon, site.coordinates.lat, site.coordinates.lon), 2)
-            if radius_km is not None:
-                items = [site for site in items if site.distance_km is not None and site.distance_km <= radius_km]
-            items.sort(key=lambda site: site.distance_km if site.distance_km is not None else 99999)
-
-        return BathingSiteListResponse(
-            items=items,
-            total=len(items),
-            filter_options=self._build_filters(dataset.items),
-            data_updated_at=dataset.data_updated_at,
-        )
-
-    async def get_site(self, site_id: str) -> BathingSite | None:
-        if self.postgres.is_enabled:
-            await self.postgres.ensure_seeded(self.sync_database)
-            return await self.postgres.get_site(site_id)
-        dataset = await self.get_dataset()
-        for item in dataset.items:
-            if item.id == site_id:
-                return item
-        return None
 
     async def health(self) -> dict[str, Any]:
         if self.postgres.is_enabled:
@@ -604,18 +515,6 @@ class OpenDataService:
             last_update=last_update,
             opening_hours=self._extract_opening_hours(raw_item),
             amenities=[],
-        )
-
-    def _build_filters(self, items: list[BathingSite]) -> FilterOptions:
-        infrastructures = sorted({label for item in items for label in item.infrastructure})
-        return FilterOptions(
-            districts=as_sorted_values([item.district for item in items]),
-            municipalities=as_sorted_values([item.municipality for item in items]),
-            water_categories=as_sorted_values([item.water_category for item in items]),
-            coastal_waters=as_sorted_values([item.coastal_water for item in items]),
-            bathing_water_types=as_sorted_values([item.bathing_water_type for item in items]),
-            water_qualities=as_sorted_values([item.water_quality for item in items]),
-            infrastructures=infrastructures,
         )
 
     async def _build_dataset(self) -> CachedDataset:

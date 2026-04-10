@@ -47,23 +47,6 @@ class BathingSite(ApiModel):
     distance_km: float | None = None
 
 
-class FilterOptions(ApiModel):
-    districts: list[str] = Field(default_factory=list)
-    municipalities: list[str] = Field(default_factory=list)
-    water_categories: list[str] = Field(default_factory=list)
-    coastal_waters: list[str] = Field(default_factory=list)
-    bathing_water_types: list[str] = Field(default_factory=list)
-    water_qualities: list[str] = Field(default_factory=list)
-    infrastructures: list[str] = Field(default_factory=list)
-
-
-class BathingSiteListResponse(ApiModel):
-    items: list[BathingSite]
-    total: int
-    filter_options: FilterOptions
-    data_updated_at: datetime
-
-
 class HealthResponse(ApiModel):
     status: str
     cache_age_seconds: int | None = None

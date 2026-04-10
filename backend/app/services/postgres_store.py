@@ -6,13 +6,28 @@ from datetime import datetime
 from typing import Any, Awaitable, Callable
 
 from geoalchemy2 import Geography, WKTElement
-from sqlalchemy import and_, case, cast, delete, distinct, func, or_, select
+from sqlalchemy import and_, case, cast, delete, func, or_, select
 
 from app.config import Settings, get_settings
-from app.db.models import BathingSiteRecord, DatasetStateRecord, MapItemRecord
-from app.db.session import create_session, dispose_engine, ensure_database_support_objects, get_database_url
-from app.models.bathing_site import BathingSite, BathingSiteListResponse, FilterOptions, SiteCoordinates
-from app.models.map_item import MapFeature, MapFeatureCollection, MapFeatureProperties, MapFilters, MapItem, MapItemSearchResponse, MapPointGeometry
+from app.db.models import (
+    BathingSiteRecord, DatasetStateRecord, MapItemRecord
+)
+from app.db.session import (
+    create_session,
+    dispose_engine,
+    ensure_database_support_objects,
+    get_database_url
+)
+from app.models.bathing_site import BathingSite
+from app.models.map_item import (
+    MapFeature,
+    MapFeatureCollection,
+    MapFeatureProperties,
+    MapFilters,
+    MapItem,
+    MapItemSearchResponse,
+    MapPointGeometry
+)
 from app.services.opendata.utils import build_bathing_image_url
 
 
@@ -41,7 +56,9 @@ class PostgresStore:
             await dispose_engine()
             PostgresStore._initialized = False
 
-    async def ensure_seeded(self, loader: Callable[[], Awaitable[Any]]) -> None:
+    async def ensure_seeded(
+        self, loader: Callable[[], Awaitable[Any]]
+    ) -> None:
         if not self.is_enabled:
             return
         await self.connect()
@@ -51,16 +68,18 @@ class PostgresStore:
             return
         await loader()
 
-    async def save_dataset(self, dataset: Any, bathing_map_items: list[MapItem] | None = None) -> None:
+    async def save_dataset(
+        self, dataset: Any, bathing_map_items: list[MapItem] | None = None
+    ) -> None:
         await self.connect()
         if bathing_map_items is None:
             bathing_map_items = self._to_bathing_map_items(
                 dataset.items, dataset.data_updated_at)
         async with create_session(self.settings) as session:
             async with session.begin():
-                await session.execute(delete(BathingSiteRecord))
-                await session.execute(delete(MapItemRecord))
-                await session.execute(delete(DatasetStateRecord))
+                await session.exec(delete(BathingSiteRecord))
+                await session.exec(delete(MapItemRecord))
+                await session.exec(delete(DatasetStateRecord))
                 session.add_all([BathingSiteRecord(
                     **self._bathing_site_params(item)) for item in dataset.items])
                 session.add_all(
@@ -75,108 +94,6 @@ class PostgresStore:
                         source_urls=dataset.source_urls,
                     )
                 )
-
-    async def list_sites(
-        self,
-        *,
-        q: str | None,
-        district: str | None,
-        municipality: str | None,
-        water_category: str | None,
-        bathing_water_type: str | None,
-        water_quality: str | None,
-        infrastructure: str | None,
-        bbox: str | None,
-        lat: float | None,
-        lon: float | None,
-        radius_km: float | None,
-    ) -> BathingSiteListResponse:
-        filters: list[Any] = []
-        search_rank = None
-        distance_expr = None
-
-        if q:
-            search_vector = func.to_tsvector(
-                "german", BathingSiteRecord.search_text)
-            search_query = func.websearch_to_tsquery("german", q)
-            filters.append(search_vector.op("@@")(search_query))
-            search_rank = func.ts_rank(search_vector, search_query)
-        if district:
-            filters.append(BathingSiteRecord.district == district)
-        if municipality:
-            filters.append(BathingSiteRecord.municipality == municipality)
-        if water_category:
-            filters.append(BathingSiteRecord.water_category == water_category)
-        if bathing_water_type:
-            filters.append(
-                BathingSiteRecord.bathing_water_type == bathing_water_type)
-        if water_quality:
-            filters.append(BathingSiteRecord.water_quality == water_quality)
-        if infrastructure:
-            filters.append(
-                BathingSiteRecord.infrastructure.any(infrastructure))
-        if bbox:
-            west, south, east, north = [
-                float(part) for part in bbox.split(",")]
-            filters.append(
-                func.ST_Intersects(
-                    BathingSiteRecord.geom,
-                    func.ST_MakeEnvelope(west, south, east, north, 4326),
-                )
-            )
-        if lat is not None and lon is not None:
-            search_point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
-            distance_expr = func.ST_DistanceSphere(
-                BathingSiteRecord.geom, search_point) / 1000
-            if radius_km is not None:
-                filters.append(
-                    func.ST_DWithin(
-                        cast(BathingSiteRecord.geom, Geography),
-                        cast(search_point, Geography),
-                        radius_km * 1000,
-                    )
-                )
-
-        async with create_session(self.settings) as session:
-            if distance_expr is not None:
-                result = await session.exec(
-                    select(BathingSiteRecord, distance_expr.label("distance_km"))
-                    .where(*filters)
-                    .order_by(distance_expr.nulls_last(), BathingSiteRecord.name)
-                )
-                items = [
-                    self._record_to_bathing_site(self._unwrap_record(record)).model_copy(
-                        update={"distance_km": distance_km_value})
-                    for record, distance_km_value in result.all()
-                ]
-            else:
-                statement = select(BathingSiteRecord).where(*filters)
-                if search_rank is not None:
-                    statement = statement.order_by(
-                        search_rank.desc(), BathingSiteRecord.name)
-                else:
-                    statement = statement.order_by(
-                        BathingSiteRecord.district.nulls_last(),
-                        BathingSiteRecord.municipality.nulls_last(),
-                        BathingSiteRecord.name,
-                    )
-                result = await session.exec(statement)
-                items = [self._record_to_bathing_site(
-                    self._unwrap_record(record)) for record in result.all()]
-
-        filters = await self._build_filter_options()
-        state = await self._get_dataset_state_record()
-        return BathingSiteListResponse(
-            items=items,
-            total=len(items),
-            filter_options=filters,
-            data_updated_at=state.data_updated_at,
-        )
-
-    async def get_site(self, site_id: str) -> BathingSite | None:
-        async with create_session(self.settings) as session:
-            record = await session.get(BathingSiteRecord, site_id)
-        return self._record_to_bathing_site(record) if record else None
 
     async def health(self) -> dict[str, Any]:
         state = await self._get_dataset_state_record()
@@ -244,7 +161,8 @@ class PostgresStore:
             )
 
         search_point = func.ST_SetSRID(func.ST_MakePoint(lng, lat), 4326)
-        distance_expr = func.ST_DistanceSphere(MapItemRecord.geom, search_point) / 1000
+        distance_expr = func.ST_DistanceSphere(
+            MapItemRecord.geom, search_point) / 1000
         if radius_km is not None:
             filters.append(
                 func.ST_DWithin(
@@ -387,60 +305,6 @@ class PostgresStore:
             )
             return [self._record_to_map_item(self._unwrap_record(record)) for record in result.all()]
 
-    async def _build_filter_options(self) -> FilterOptions:
-        async with create_session(self.settings) as session:
-            districts = await session.exec(
-                select(distinct(BathingSiteRecord.district))
-                .where(BathingSiteRecord.district.is_not(None))
-                .order_by(BathingSiteRecord.district)
-            )
-            municipalities = await session.exec(
-                select(distinct(BathingSiteRecord.municipality))
-                .where(BathingSiteRecord.municipality.is_not(None))
-                .order_by(BathingSiteRecord.municipality)
-            )
-            water_categories = await session.exec(
-                select(distinct(BathingSiteRecord.water_category))
-                .where(BathingSiteRecord.water_category.is_not(None))
-                .order_by(BathingSiteRecord.water_category)
-            )
-            coastal_waters = await session.exec(
-                select(distinct(BathingSiteRecord.coastal_water))
-                .where(BathingSiteRecord.coastal_water.is_not(None))
-                .order_by(BathingSiteRecord.coastal_water)
-            )
-            bathing_water_types = await session.exec(
-                select(distinct(BathingSiteRecord.bathing_water_type))
-                .where(BathingSiteRecord.bathing_water_type.is_not(None))
-                .order_by(BathingSiteRecord.bathing_water_type)
-            )
-            water_qualities = await session.exec(
-                select(distinct(BathingSiteRecord.water_quality))
-                .where(BathingSiteRecord.water_quality.is_not(None))
-                .order_by(BathingSiteRecord.water_quality)
-            )
-            infrastructure_values = await session.exec(
-                select(distinct(func.unnest(BathingSiteRecord.infrastructure)))
-                .where(BathingSiteRecord.infrastructure.is_not(None))
-                .order_by(func.unnest(BathingSiteRecord.infrastructure))
-            )
-
-            return FilterOptions(
-                districts=[value for value in districts.all() if value],
-                municipalities=[
-                    value for value in municipalities.all() if value],
-                water_categories=[
-                    value for value in water_categories.all() if value],
-                coastal_waters=[
-                    value for value in coastal_waters.all() if value],
-                bathing_water_types=[
-                    value for value in bathing_water_types.all() if value],
-                water_qualities=[
-                    value for value in water_qualities.all() if value],
-                infrastructures=[
-                    value for value in infrastructure_values.all() if value],
-            )
-
     async def _get_dataset_state(self) -> dict[str, Any]:
         state = await self._fetch_one("SELECT * FROM dataset_state WHERE id = 1")
         if state is None:
@@ -539,69 +403,6 @@ class PostgresStore:
                 ),
             ),
         }
-
-    @staticmethod
-    def _row_to_bathing_site(row: dict[str, Any]) -> BathingSite:
-        return BathingSite(
-            id=row["id"],
-            name=row["name"],
-            short_name=row["short_name"],
-            common_name=row["common_name"],
-            municipality=row["municipality"],
-            district=row["district"],
-            region=row["region"],
-            water_category=row["water_category"],
-            coastal_water=row["coastal_water"],
-            bathing_water_type=row["bathing_water_type"],
-            bathing_spot_length_m=row["bathing_spot_length_m"],
-            description=row["description"],
-            bathing_spot_information=row["bathing_spot_information"],
-            impacts_on_bathing_water=row["impacts_on_bathing_water"],
-            possible_pollutions=row["possible_pollutions"],
-            infrastructure=row["infrastructure"] or [],
-            water_quality=row["water_quality"],
-            water_quality_from_year=row["water_quality_from_year"],
-            water_quality_to_year=row["water_quality_to_year"],
-            seasonal_status=row["seasonal_status"],
-            season_start=row["season_start"],
-            season_end=row["season_end"],
-            last_sample_date=row["last_sample_date"],
-            source_url=row["source_url"],
-            source_dataset=row["source_dataset"],
-            coordinates=SiteCoordinates(lat=row["lat"], lon=row["lon"]),
-            distance_km=row.get("distance_km"),
-        )
-
-    @staticmethod
-    def _record_to_bathing_site(record: BathingSiteRecord) -> BathingSite:
-        return BathingSite(
-            id=record.id,
-            name=record.name,
-            short_name=record.short_name,
-            common_name=record.common_name,
-            municipality=record.municipality,
-            district=record.district,
-            region=record.region,
-            water_category=record.water_category,
-            coastal_water=record.coastal_water,
-            bathing_water_type=record.bathing_water_type,
-            bathing_spot_length_m=record.bathing_spot_length_m,
-            description=record.description,
-            bathing_spot_information=record.bathing_spot_information,
-            impacts_on_bathing_water=record.impacts_on_bathing_water,
-            possible_pollutions=record.possible_pollutions,
-            infrastructure=record.infrastructure or [],
-            water_quality=record.water_quality,
-            water_quality_from_year=record.water_quality_from_year,
-            water_quality_to_year=record.water_quality_to_year,
-            seasonal_status=record.seasonal_status,
-            season_start=record.season_start,
-            season_end=record.season_end,
-            last_sample_date=record.last_sample_date,
-            source_url=record.source_url,
-            source_dataset=record.source_dataset,
-            coordinates=SiteCoordinates(lat=record.lat, lon=record.lon),
-        )
 
     @staticmethod
     def _unwrap_record(record: Any) -> Any:
