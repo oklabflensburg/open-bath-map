@@ -12,8 +12,14 @@ export interface MapItem {
   address?: string | null
   postcode?: string | null
   city?: string | null
+  municipality?: string | null
   imageUrl?: string | null
   website?: string | null
+  wikipediaUrl?: string | null
+  wikipediaTitle?: string | null
+  wikipediaSummary?: string | null
+  wikidataId?: string | null
+  wikidataUrl?: string | null
   sourceName?: string | null
   contentLicense?: string | null
   tags: string[]

@@ -86,6 +86,11 @@ async def ensure_database_support_objects(
                 """
             )
         )
+        await conn.execute(text("ALTER TABLE IF EXISTS map_items ADD COLUMN IF NOT EXISTS wikipedia_url TEXT"))
+        await conn.execute(text("ALTER TABLE IF EXISTS map_items ADD COLUMN IF NOT EXISTS wikipedia_title TEXT"))
+        await conn.execute(text("ALTER TABLE IF EXISTS map_items ADD COLUMN IF NOT EXISTS wikipedia_summary TEXT"))
+        await conn.execute(text("ALTER TABLE IF EXISTS map_items ADD COLUMN IF NOT EXISTS wikidata_id TEXT"))
+        await conn.execute(text("ALTER TABLE IF EXISTS map_items ADD COLUMN IF NOT EXISTS wikidata_url TEXT"))
 
 
 @asynccontextmanager

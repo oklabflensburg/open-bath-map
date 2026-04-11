@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from collections.abc import Callable
 
 import httpx
 
@@ -44,6 +45,7 @@ from .utils import (
     slugify,
     split_bathing_name_parts,
 )
+from .wiki import WikiEnricher
 
 
 class OpenDataService:
@@ -52,6 +54,7 @@ class OpenDataService:
         self.cache_path = Path(self.settings.cache_dir) / "bathing-sites-cache.json"
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self.postgres = PostgresStore(self.settings)
+        self.wiki = WikiEnricher(self.settings)
 
     async def get_dataset(self) -> CachedDataset:
         cached = self._read_cache()
@@ -132,14 +135,23 @@ class OpenDataService:
     async def get_map_item_details(self, item_id: str | None = None, slug: str | None = None) -> MapItem | None:
         if self.postgres.is_enabled:
             await self.postgres.ensure_seeded(self.sync_database)
-            return await self.postgres.get_map_item_details(item_id=item_id, slug=slug)
+            item = await self.postgres.get_map_item_details(item_id=item_id, slug=slug)
+            return await self._enrich_item_details(item)
         items = await self._get_map_items()
         for item in items:
             if item_id and item.id == item_id:
-                return item
+                return await self._enrich_item_details(item)
             if slug and item.slug == slug:
-                return item
+                return await self._enrich_item_details(item)
         return None
+
+    async def _enrich_item_details(self, item: MapItem | None) -> MapItem | None:
+        if item is None:
+            return None
+        try:
+            return await self.wiki.enrich_item(item)
+        except httpx.HTTPError:
+            return item
 
     async def search_map_items(
         self,
@@ -191,12 +203,38 @@ class OpenDataService:
                 matches.append(item)
         return MapItemSearchResponse(items=matches[:limit], total=len(matches))
 
-    async def sync_database(self) -> dict[str, int]:
+    async def sync_database(
+        self,
+        progress: Callable[[str], None] | None = None,
+    ) -> dict[str, int]:
         if not self.postgres.is_enabled:
             raise RuntimeError("DATABASE_URL is not configured")
-        dataset = await self._build_dataset()
+        if progress:
+            progress("Baue Open-Data-Datensatz auf")
+        dataset = await self._build_dataset(progress=progress)
+        if progress:
+            progress(f"Datensatz geladen: {len(dataset.items)} Badestellen, {len(dataset.poi_items)} POIs")
+            progress("Erzeuge Kartenobjekte für Badestellen")
         bathing_map_items = await self._get_bathing_map_items(dataset)
+        if progress:
+            progress("Reichere POIs mit Wikipedia/Wikidata an")
+        dataset.poi_items = await self.wiki.enrich_items_with_progress(
+            dataset.poi_items,
+            progress=progress,
+            label="POIs",
+        )
+        if progress:
+            progress("Reichere Badestellen mit Wikipedia/Wikidata an")
+        bathing_map_items = await self.wiki.enrich_items_with_progress(
+            bathing_map_items,
+            progress=progress,
+            label="Badestellen",
+        )
+        if progress:
+            progress("Schreibe Datensatz nach PostgreSQL")
         await self.postgres.save_dataset(dataset, bathing_map_items)
+        if progress:
+            progress("PostgreSQL-Sync abgeschlossen")
         return {
             "bathing_sites": len(dataset.items),
             "poi_items": len(dataset.poi_items),
@@ -279,7 +317,7 @@ class OpenDataService:
                     amenities=amenities,
                 )
             )
-        return items
+        return await self.wiki.enrich_items(items)
 
     def _to_feature_collection(self, visible_items: list[MapItem], all_items: list[MapItem]) -> MapFeatureCollection:
         features = [
@@ -517,16 +555,50 @@ class OpenDataService:
             amenities=[],
         )
 
-    async def _build_dataset(self) -> CachedDataset:
+    async def _build_dataset(
+        self,
+        progress: Callable[[str], None] | None = None,
+    ) -> CachedDataset:
         async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds, follow_redirects=True) as client:
+            if progress:
+                progress("Ermittle Quell-URLs für Badegewässer")
             source_urls = await self._discover_source_urls(client)
+            if progress:
+                progress("Ermittle Quell-URL für touristische POIs")
             poi_source_url = await self._discover_poi_source_url(client)
+            if progress:
+                progress("Lade CSV: Stammdaten")
             raw_stammdaten = await self._fetch_table(client, source_urls["stammdaten"], STAMMDATEN_COLUMNS)
+            if progress:
+                progress(f"Stammdaten geladen: {len(raw_stammdaten)} Zeilen")
+                progress("Lade CSV: Einstufung")
             raw_einstufung = await self._fetch_table(client, source_urls["einstufung"], EINSTUFUNG_COLUMNS)
+            if progress:
+                progress(f"Einstufung geladen: {len(raw_einstufung)} Zeilen")
+                progress("Lade CSV: Infrastruktur")
             raw_infra = await self._fetch_table(client, source_urls["infrastruktur"], INFRASTRUCTURE_COLUMNS)
+            if progress:
+                progress(f"Infrastruktur geladen: {len(raw_infra)} Zeilen")
+                progress("Lade CSV: Saisondauer")
             raw_saison = await self._fetch_table(client, source_urls["saison"], SAISON_COLUMNS)
+            if progress:
+                progress(f"Saisondauer geladen: {len(raw_saison)} Zeilen")
+                progress("Lade CSV: Messungen")
             raw_messungen = await self._fetch_table(client, source_urls["messungen"], MEASUREMENT_COLUMNS)
+            if progress:
+                progress(f"Messungen geladen: {len(raw_messungen)} Zeilen")
+                progress("Lade POI-JSON")
             poi_items = await self._fetch_poi_items(client, poi_source_url)
+            if progress:
+                progress(f"POIs geladen: {len(poi_items)} Einträge")
+
+        if progress:
+            progress("Starte Wiki-Enrichment für POIs im Datensatzaufbau")
+        poi_items = await self.wiki.enrich_items_with_progress(
+            poi_items,
+            progress=progress,
+            label="POIs (Build)",
+        )
 
         quality_by_id: dict[str, dict[str, Any]] = {}
         for row in raw_einstufung:
@@ -604,6 +676,8 @@ class OpenDataService:
             )
 
         items.sort(key=lambda item: ((item.district or ""), (item.municipality or ""), item.name))
+        if progress:
+            progress(f"Badestellen normalisiert: {len(items)} Einträge")
         return CachedDataset(
             items=items,
             poi_items=poi_items,

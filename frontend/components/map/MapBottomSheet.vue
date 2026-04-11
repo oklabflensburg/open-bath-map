@@ -116,6 +116,7 @@
               <ul class="space-y-3 text-sm leading-6 text-slate-700">
                 <li v-if="formattedAddress">{{ formattedAddress }}</li>
                 <li v-if="item.description">{{ item.description }}</li>
+                <li v-if="item.wikipediaSummary">Wikipedia: {{ item.wikipediaSummary }}</li>
                 <li v-if="item.type === 'badestelle' && item.waterQuality">Wasserqualität: {{ item.waterQuality }}</li>
                 <li v-if="item.type === 'badestelle' && formattedSeasonDuration">Badegewässer Saisondauer: {{ formattedSeasonDuration }}</li>
                 <li v-if="item.accessibility">Zugang: {{ item.accessibility }}</li>
@@ -123,6 +124,37 @@
                 <li v-if="item.type === 'poi' && item.openingHours">Öffnungszeiten: {{ item.openingHours }}</li>
                 <li v-if="item.amenities.length">{{ item.type === 'badestelle' ? 'Ausstattung' : 'Angebot' }}: {{ item.amenities.join(', ') }}</li>
                 <li v-if="formattedDate">Aktualisiert: {{ formattedDate }}</li>
+                <li v-if="item.website || item.wikipediaUrl || item.wikidataUrl">
+                  <div class="flex flex-wrap gap-2">
+                    <a
+                      v-if="isValidHttpUrl(item.website)"
+                      :href="item.website || undefined"
+                      class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Website
+                    </a>
+                    <a
+                      v-if="isValidHttpUrl(item.wikipediaUrl)"
+                      :href="item.wikipediaUrl || undefined"
+                      class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Wikipedia
+                    </a>
+                    <a
+                      v-if="isValidHttpUrl(item.wikidataUrl)"
+                      :href="item.wikidataUrl || undefined"
+                      class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                      rel="noopener noreferrer"
+                      target="_blank"
+                    >
+                      Wikidata
+                    </a>
+                  </div>
+                </li>
               </ul>
             </div>
           </article>

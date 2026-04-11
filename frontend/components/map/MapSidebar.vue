@@ -105,6 +105,10 @@
                 <strong class="block text-slate-900">Beschreibung</strong>
                 {{ item.description }}
               </li>
+              <li v-if="item.wikipediaSummary">
+                <strong class="block text-slate-900">Wikipedia</strong>
+                {{ item.wikipediaSummary }}
+              </li>
               <li v-if="item.type === 'badestelle' && item.waterQuality">
                 <strong class="block text-slate-900">Wasserqualität</strong>
                 {{ item.waterQuality }}
@@ -140,6 +144,38 @@
               <li v-if="formattedDate">
                 <strong class="block text-slate-900">Letzte Aktualisierung</strong>
                 {{ formattedDate }}
+              </li>
+              <li v-if="item.website || item.wikipediaUrl || item.wikidataUrl">
+                <strong class="block text-slate-900">Weiterführende Links</strong>
+                <div class="mt-2 flex flex-wrap gap-2">
+                  <a
+                    v-if="isValidHttpUrl(item.website)"
+                    :href="item.website || undefined"
+                    class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Website
+                  </a>
+                  <a
+                    v-if="isValidHttpUrl(item.wikipediaUrl)"
+                    :href="item.wikipediaUrl || undefined"
+                    class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Wikipedia
+                  </a>
+                  <a
+                    v-if="isValidHttpUrl(item.wikidataUrl)"
+                    :href="item.wikidataUrl || undefined"
+                    class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    Wikidata
+                  </a>
+                </div>
               </li>
             </ul>
           </div>

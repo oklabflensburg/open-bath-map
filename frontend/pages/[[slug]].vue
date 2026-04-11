@@ -46,6 +46,9 @@ useSeoMeta({
 
 useJsonLd(() => {
   const item = seoItem.value
+  const sameAs = item
+    ? [item.website, item.wikipediaUrl, item.wikidataUrl].filter(isValidHttpUrl)
+    : []
   const baseSchema = {
     '@context': 'https://schema.org',
     '@type': 'WebSite',
@@ -108,7 +111,7 @@ useJsonLd(() => {
       url: pageUrl.value,
       description: buildMetaDescription(item),
       image: item.imageUrl || undefined,
-      sameAs: isValidHttpUrl(item.website) ? item.website : undefined,
+      sameAs: sameAs.length ? sameAs : undefined,
       touristType: item.type === 'badestelle' ? 'Badegäste' : undefined,
       additionalType: item.type === 'badestelle' ? 'https://schema.org/Beach' : undefined,
       keywords: item.amenities.length || item.tags.length ? [...item.amenities, ...item.tags].join(', ') : undefined,

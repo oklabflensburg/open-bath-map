@@ -29,6 +29,11 @@ class MapItem(ApiModel):
     municipality: str | None = None
     image_url: str | None = None
     website: str | None = None
+    wikipedia_url: str | None = None
+    wikipedia_title: str | None = None
+    wikipedia_summary: str | None = None
+    wikidata_id: str | None = None
+    wikidata_url: str | None = None
     source_name: str | None = None
     content_license: str | None = None
     tags: list[str] = Field(default_factory=list)
