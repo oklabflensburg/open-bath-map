@@ -5,12 +5,14 @@
       :class="isDragging ? 'transition-none' : 'transition-[height,transform] duration-200 ease-out'"
       :style="sheetStyle"
       @click="onSheetClick"
-      @touchstart="onTouchStart"
-      @touchmove="onTouchMove"
-      @touchend="onTouchEnd"
-      @touchcancel="onTouchEnd"
     >
-      <div class="flex cursor-grab justify-center py-2 active:cursor-grabbing">
+      <div
+        class="flex cursor-grab justify-center py-2 active:cursor-grabbing"
+        @touchstart="onTouchStart"
+        @touchmove="onTouchMove"
+        @touchend="onTouchEnd"
+        @touchcancel="onTouchEnd"
+      >
         <div class="h-1.5 w-14 rounded-full bg-slate-300" />
       </div>
 
@@ -169,7 +171,6 @@ const translateY = ref(0)
 const openHeight = '58dvh'
 const closedHeight = '2.25rem'
 let touchStartY = 0
-let startScrollTop = 0
 let canDragSheet = false
 
 const formattedAddress = computed(() => props.item ? formatAddress(props.item) : null)
@@ -198,19 +199,6 @@ watch(activeTab, () => {
   scrollToTop()
 })
 
-function isAtTop(scrollTop: number) {
-  return scrollTop <= 0
-}
-
-function isAtBottom(element: HTMLElement | null, scrollTop: number) {
-  if (!element) {
-    return false
-  }
-
-  const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
-  return scrollTop >= maxScrollTop - 1
-}
-
 function onTouchStart(event: TouchEvent) {
   const touch = event.touches[0]
   if (!touch) {
@@ -218,11 +206,7 @@ function onTouchStart(event: TouchEvent) {
   }
 
   touchStartY = touch.clientY
-  startScrollTop = contentElement.value?.scrollTop ?? 0
-  canDragSheet = props.isOpen && (
-    isAtTop(startScrollTop)
-    || isAtBottom(contentElement.value, startScrollTop)
-  )
+  canDragSheet = true
   isDragging.value = false
 }
 
@@ -239,15 +223,6 @@ function onTouchMove(event: TouchEvent) {
       emit('open')
     }
     return
-  }
-
-  const scrollTop = contentElement.value?.scrollTop ?? 0
-  if (
-    !canDragSheet
-    && deltaY > 0
-    && (isAtTop(scrollTop) || isAtBottom(contentElement.value, scrollTop))
-  ) {
-    canDragSheet = true
   }
 
   if (!canDragSheet || deltaY <= 0) {
