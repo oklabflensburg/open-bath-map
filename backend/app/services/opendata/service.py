@@ -37,6 +37,7 @@ from .utils import (
     clean_text,
     haversine_km,
     is_redundant_slug_part,
+    normalize_bathing_coordinates,
     normalize_bathing_region,
     normalize_bathing_title,
     parse_date,
@@ -46,6 +47,8 @@ from .utils import (
     split_bathing_name_parts,
 )
 from .wiki import WikiEnricher
+
+DATASET_CACHE_VERSION = 2
 
 
 class OpenDataService:
@@ -634,8 +637,16 @@ class OpenDataService:
 
         items: list[BathingSite] = []
         for row in raw_stammdaten:
-            lat = parse_float(row["lat"])
-            lon = parse_float(row["lon"])
+            utm_east = parse_float(row["utm_east"])
+            utm_north = parse_float(row["utm_north"])
+            raw_lon = parse_float(row["lon"])
+            raw_lat = parse_float(row["lat"])
+            lon, lat = normalize_bathing_coordinates(
+                utm_east=utm_east,
+                utm_north=utm_north,
+                lon=raw_lon,
+                lat=raw_lat,
+            )
             site_id = row["bathing_water_id"]
             if lat is None or lon is None or not site_id:
                 continue
@@ -794,6 +805,8 @@ class OpenDataService:
         if not self.cache_path.exists():
             return None
         payload = json.loads(self.cache_path.read_text(encoding="utf-8"))
+        if payload.get("cache_version") != DATASET_CACHE_VERSION:
+            return None
         if "poi_items" not in payload:
             return None
         return CachedDataset(
@@ -806,6 +819,7 @@ class OpenDataService:
 
     def _write_cache(self, dataset: CachedDataset) -> None:
         payload = {
+            "cache_version": DATASET_CACHE_VERSION,
             "items": [item.model_dump(mode="json") for item in dataset.items],
             "poi_items": [item.model_dump(mode="json") for item in dataset.poi_items],
             "data_updated_at": dataset.data_updated_at.isoformat(),
