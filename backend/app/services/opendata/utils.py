@@ -3,6 +3,8 @@ import re
 from urllib.parse import quote
 from datetime import date, datetime
 
+from pyproj import Transformer
+
 DISTRICT_LICENSE_CODES: dict[str, str] = {
     "Dithmarschen": "HEI",
     "Flensburg, Stadt": "FL",
@@ -20,6 +22,8 @@ DISTRICT_LICENSE_CODES: dict[str, str] = {
     "Steinburg": "IZ",
     "Stormarn": "OD",
 }
+
+_UTM32_TO_WGS84 = Transformer.from_crs("EPSG:25832", "EPSG:4326", always_xy=True)
 
 
 def parse_date(value: str | None) -> date | None:
@@ -40,6 +44,18 @@ def parse_float(value: str | None) -> float | None:
         return float(str(value).replace(",", "."))
     except ValueError:
         return None
+
+
+def normalize_bathing_coordinates(
+    utm_east: float | None,
+    utm_north: float | None,
+    lon: float | None,
+    lat: float | None,
+) -> tuple[float | None, float | None]:
+    if utm_east is not None and utm_north is not None:
+        normalized_lon, normalized_lat = _UTM32_TO_WGS84.transform(utm_east, utm_north)
+        return normalized_lon, normalized_lat
+    return lon, lat
 
 
 def parse_datetime(value: str | None) -> datetime | None:
