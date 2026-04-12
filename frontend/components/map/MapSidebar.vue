@@ -77,6 +77,7 @@
         <article v-else class="overflow-hidden rounded-xl border border-slate-300 bg-white">
           <img
             v-if="showImage"
+            :key="`${item.id}:${item.imageUrl || ''}`"
             :src="item.imageUrl || undefined"
             :alt="item.title"
             class="h-56 w-full object-cover"
@@ -117,6 +118,16 @@
                 <strong class="block text-slate-900">Badegewässer Saisondauer</strong>
                 {{ formattedSeasonDuration }}
               </li>
+              <li v-if="hasMeasurementData">
+                <strong class="block text-slate-900">Letzte Messung</strong>
+                <div v-if="formattedMeasurementDate">Datum: {{ formattedMeasurementDate }}</div>
+                <div v-if="item.sampleType">{{ item.sampleType }}</div>
+                <div v-if="formattedIntestinalEnterococci">Intestinale Enterokokken: {{ formattedIntestinalEnterococci }}</div>
+                <div v-if="formattedEColi">E. coli: {{ formattedEColi }}</div>
+                <div v-if="formattedWaterTemperature">Wassertemperatur: {{ formattedWaterTemperature }}</div>
+                <div v-if="formattedAirTemperature">Lufttemperatur: {{ formattedAirTemperature }}</div>
+                <div v-if="formattedTransparency">Sichttiefe: {{ formattedTransparency }}</div>
+              </li>
               <li v-if="item.accessibility">
                 <strong class="block text-slate-900">Zugang</strong>
                 {{ item.accessibility }}
@@ -145,11 +156,20 @@
                 <strong class="block text-slate-900">Letzte Aktualisierung</strong>
                 {{ formattedDate }}
               </li>
-              <li v-if="item.website || item.wikipediaUrl || item.wikidataUrl">
+              <li v-if="(item.type === 'poi' && item.website) || item.bathingProfileUrl || item.wikipediaUrl || item.wikidataUrl">
                 <strong class="block text-slate-900">Weiterführende Links</strong>
                 <div class="mt-2 flex flex-wrap gap-2">
                   <a
-                    v-if="isValidHttpUrl(item.website)"
+                    v-if="isValidHttpUrl(item.bathingProfileUrl)"
+                    :href="item.bathingProfileUrl || undefined"
+                    class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                    rel="noopener noreferrer"
+                    target="_blank"
+                  >
+                    BW-Profil (PDF)
+                  </a>
+                  <a
+                    v-if="item.type === 'poi' && isValidHttpUrl(item.website)"
                     :href="item.website || undefined"
                     class="rounded-full border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
                     rel="noopener noreferrer"
@@ -192,7 +212,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import type { FilterState, MapFilterOptions, MapItem } from '../../types/map'
-import { formatAddress, formatDate, formatSeasonDuration, isValidHttpUrl, labelForType } from '../../utils/formatters'
+import { formatAddress, formatDate, formatMeasurementValue, formatSeasonDuration, isValidHttpUrl, labelForType } from '../../utils/formatters'
 import { applyImageFallback } from '../../composables/useImageFallback'
 
 const props = defineProps<{
@@ -224,7 +244,25 @@ const activeTab = ref<'info' | 'search' | 'result'>('info')
 
 const formattedAddress = computed(() => props.item ? formatAddress(props.item) : null)
 const formattedDate = computed(() => formatDate(props.item?.lastUpdate))
+const formattedMeasurementDate = computed(() => props.item?.type === 'badestelle' ? formatDate(props.item.lastUpdate) : null)
 const formattedSeasonDuration = computed(() => formatSeasonDuration(props.item))
+const formattedIntestinalEnterococci = computed(() => formatMeasurementValue(props.item?.intestinalEnterococci, 'KBE/100 ml'))
+const formattedEColi = computed(() => formatMeasurementValue(props.item?.eColi, 'KBE/100 ml'))
+const formattedWaterTemperature = computed(() => formatMeasurementValue(props.item?.waterTemperatureC, '°C'))
+const formattedAirTemperature = computed(() => formatMeasurementValue(props.item?.airTemperatureC, '°C'))
+const formattedTransparency = computed(() => formatMeasurementValue(props.item?.transparencyM, 'm'))
+const hasMeasurementData = computed(() => Boolean(
+  props.item
+  && props.item.type === 'badestelle'
+  && (
+    props.item.sampleType
+    || formattedIntestinalEnterococci.value
+    || formattedEColi.value
+    || formattedWaterTemperature.value
+    || formattedAirTemperature.value
+    || formattedTransparency.value
+  ),
+))
 const showImage = computed(() => isValidHttpUrl(props.item?.imageUrl))
 
 watch(activeTab, () => {

@@ -14,6 +14,7 @@ export interface MapItem {
   city?: string | null
   municipality?: string | null
   imageUrl?: string | null
+  bathingProfileUrl?: string | null
   website?: string | null
   wikipediaUrl?: string | null
   wikipediaTitle?: string | null
@@ -29,6 +30,12 @@ export interface MapItem {
   seasonalStatus?: string | null
   seasonStart?: string | null
   seasonEnd?: string | null
+  sampleType?: string | null
+  intestinalEnterococci?: number | null
+  eColi?: number | null
+  waterTemperatureC?: number | null
+  airTemperatureC?: number | null
+  transparencyM?: number | null
   lastUpdate?: string | null
   district?: string | null
   openingHours?: string | null

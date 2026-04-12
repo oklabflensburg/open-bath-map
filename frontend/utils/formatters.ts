@@ -17,6 +17,18 @@ export function formatDate(value?: string | null) {
   }).format(date)
 }
 
+export function formatMeasurementValue(value?: number | null, unit = '') {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return null
+  }
+
+  const formatter = Number.isInteger(value)
+    ? new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 })
+    : new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 2 })
+  const suffix = unit ? ` ${unit}` : ''
+  return `${formatter.format(value)}${suffix}`
+}
+
 export function formatSeasonDuration(item?: MapItem | null) {
   if (!item) {
     return null
@@ -62,17 +74,23 @@ export function labelForType(type: MapItemType) {
 
 export function buildMetaTitle(item?: MapItem | null) {
   if (!item) {
-    return 'Badestellen und POIs in Schleswig-Holstein'
+    return 'Badestellen in Schleswig-Holstein - Karte, Infos und Wasserqualitaet'
   }
 
-  return `${item.title} | Badestellen und POIs`
+  const location = item.city || item.district || 'Schleswig-Holstein'
+  if (item.type === 'badestelle') {
+    return `${item.title} in ${location} - Infos, Lage und Wasserqualitaet`
+  }
+  return `${item.title} in ${location} - Lage und Detailinformationen`
 }
 
 export function buildMetaDescription(item?: MapItem | null) {
   if (!item) {
-    return 'Interaktive Karte für Badestellen und wassernahe POIs in Schleswig-Holstein mit automatischem Nachladen beim Bewegen der Karte.'
+    return 'Interaktive Karte fuer Badestellen in Schleswig-Holstein mit Detailseiten, Filtern und datenbasierten Informationen aus offenen Quellen.'
   }
 
+  const location = item.city || item.district || 'Schleswig-Holstein'
+  const typeLabel = item.type === 'badestelle' ? 'Badestelle' : 'Ort'
   return item.description
-    || `${labelForType(item.type)} in ${item.city || 'Schleswig-Holstein'} mit Detailansicht auf der interaktiven Karte.`
+    || `${typeLabel} in ${location} mit Kartenlage, Detaildaten und weiterfuehrenden Informationen.`
 }

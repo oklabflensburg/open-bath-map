@@ -29,6 +29,7 @@
           <div class="flex items-start gap-3">
             <img
               v-if="isValidHttpUrl(item.imageUrl)"
+              :key="`${item.id}:${item.imageUrl || ''}`"
               :src="item.imageUrl || undefined"
               :alt="item.title"
               class="h-16 w-16 shrink-0 rounded-lg object-cover"

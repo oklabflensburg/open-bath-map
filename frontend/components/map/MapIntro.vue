@@ -35,6 +35,22 @@
     </section>
 
     <section class="space-y-2">
+      <h2 class="text-xl font-bold text-slate-900 md:text-2xl">Regionen und Sammlungen</h2>
+      <p class="text-sm leading-6 text-slate-700 md:text-base">
+        Neben der Karte gibt es indexierbare Uebersichtsseiten nach Regionen und Themen. Sie helfen beim schnellen Einstieg
+        und verlinken direkt auf passende Detailseiten.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <NuxtLink class="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 transition hover:bg-sky-100" to="/regionen">
+          Zu den Regionen
+        </NuxtLink>
+        <NuxtLink class="rounded-lg bg-sky-50 px-3 py-2 text-sm text-sky-800 transition hover:bg-sky-100" to="/sammlungen">
+          Zu den Sammlungen
+        </NuxtLink>
+      </div>
+    </section>
+
+    <section class="space-y-2">
       <h2 class="text-xl font-bold text-slate-900 md:text-2xl">Open Data und Open Source</h2>
       <p class="text-sm leading-6 text-slate-700 md:text-base">
         Die Daten zu den Badestellen stammen aus dem Open-Data-Portal Schleswig-Holstein. Dafür werden mehrere
