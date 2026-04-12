@@ -70,16 +70,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { useHead, useRoute, useRuntimeConfig, useSeoMeta } from '#imports'
 import type { FilterState, MapBounds, MapItem, UserLocation } from '../../types/map'
-import { buildMetaDescription, buildMetaTitle } from '../../utils/formatters'
 
 const state = useMapState()
 const { clearSearch, loadBounds, loadRadius, loadSearch } = useMapData()
 const { closeSelection, selectById } = useMapSelection()
 const { isLocating, locationError, requestLocation } = useGeolocation()
-const config = useRuntimeConfig()
-const route = useRoute()
 const mapViewRef = ref<{
   focusItem: (item: MapItem, zoom?: number) => void
   centerOnLocation: (location: UserLocation, zoom?: number) => void
@@ -87,28 +83,6 @@ const mapViewRef = ref<{
 const didInitialBoundsLoad = ref(false)
 const isMapReady = ref(false)
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
-
-const canonicalUrl = computed(() => {
-  const path = route.path || '/'
-  const base = String(config.public.siteUrl || 'http://localhost:3000').replace(/\/+$/u, '')
-  return toAbsoluteUrl(path, base)
-})
-
-useSeoMeta({
-  title: () => buildMetaTitle(state.selectedItem.value),
-  ogTitle: () => buildMetaTitle(state.selectedItem.value),
-  description: () => buildMetaDescription(state.selectedItem.value),
-  ogDescription: () => buildMetaDescription(state.selectedItem.value),
-})
-
-useHead({
-  link: () => [
-    {
-      rel: 'canonical',
-      href: canonicalUrl.value,
-    },
-  ],
-})
 
 watch(() => state.selectedItem.value, (item) => {
   if (item && isMapReady.value) {

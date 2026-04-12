@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useFetch, useRoute, useRuntimeConfig, useSeoMeta } from '#imports'
 import DetailRelatedLinks from '../components/seo/DetailRelatedLinks.vue'
 import MapExperience from '../components/map/MapExperience.vue'
@@ -24,7 +24,13 @@ const route = useRoute()
 const config = useRuntimeConfig()
 const state = useMapState()
 const siteUrl = useSiteUrl()
-const slug = computed(() => typeof route.params.slug === 'string' ? route.params.slug : '')
+const slug = computed(() => {
+  const raw = route.params.slug
+  if (Array.isArray(raw)) {
+    return raw[0] || ''
+  }
+  return typeof raw === 'string' ? raw : ''
+})
 const websiteUrl = toAbsoluteUrl('/', siteUrl)
 const pageUrl = computed(() => toAbsoluteUrl(route.path || '/', siteUrl))
 
@@ -32,13 +38,18 @@ definePageMeta({
   key: 'map',
 })
 
-const { data: detailData } = await useFetch<MapItem>(`${config.public.apiBase}/api/map/v1/details`, {
-  query: () => ({ slug: slug.value }),
-  key: `detail-meta:${slug.value}`,
-  server: true,
-  lazy: false,
-  default: () => null,
-})
+const detailData = ref<MapItem | null>(null)
+
+if (slug.value) {
+  const { data } = await useFetch<MapItem>(`${config.public.apiBase}/api/map/v1/details`, {
+    query: { slug: slug.value },
+    key: `detail-meta:${slug.value}`,
+    server: true,
+    lazy: false,
+    default: () => null,
+  })
+  detailData.value = data.value
+}
 
 const { data: relatedItemsData } = await useFetch<MapItemSearchResponse>(`${config.public.apiBase}/api/map/v1/items`, {
   query: { type: 'badestelle', limit: 5000 },
