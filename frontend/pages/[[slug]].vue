@@ -50,6 +50,13 @@ const { data: relatedItemsData } = await useFetch<MapItemSearchResponse>(`${conf
 
 const allBathingItems = computed(() => relatedItemsData.value?.items || [])
 const seoItem = computed(() => state.selectedItem.value ?? detailData.value)
+const socialImageUrl = computed(() => {
+  const item = seoItem.value
+  if (!item || (item.type !== 'badestelle' && item.type !== 'poi')) {
+    return undefined
+  }
+  return item.imageUrl || toAbsoluteUrl('/images/placeholder-bathing-site.svg', siteUrl)
+})
 const detailLandingMatches = computed(() => seoItem.value ? getLandingMatchesForItem(seoItem.value) : { regions: [], collections: [] })
 const regionLinks = computed(() => detailLandingMatches.value.regions.map((page) => ({
   label: page.h1,
@@ -68,11 +75,11 @@ useSeoMeta({
   ogDescription: () => buildMetaDescription(seoItem.value),
   ogType: () => seoItem.value ? 'article' : 'website',
   ogUrl: () => pageUrl.value,
-  ogImage: () => seoItem.value?.imageUrl || undefined,
-  twitterCard: () => seoItem.value?.imageUrl ? 'summary_large_image' : 'summary',
+  ogImage: () => socialImageUrl.value,
+  twitterCard: () => socialImageUrl.value ? 'summary_large_image' : 'summary',
   twitterTitle: () => buildMetaTitle(seoItem.value),
   twitterDescription: () => buildMetaDescription(seoItem.value),
-  twitterImage: () => seoItem.value?.imageUrl || undefined,
+  twitterImage: () => socialImageUrl.value,
 })
 
 useJsonLd(() => {
