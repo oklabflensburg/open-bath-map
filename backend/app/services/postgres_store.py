@@ -28,7 +28,7 @@ from app.models.map_item import (
     MapItemSearchResponse,
     MapPointGeometry
 )
-from app.services.opendata.utils import build_bathing_image_url
+from app.services.opendata.utils import build_bathing_image_url, build_bathing_profile_url
 
 
 class PostgresStore:
@@ -203,7 +203,11 @@ class PostgresStore:
                 statement = statement.where(MapItemRecord.slug == slug)
             record = await session.scalar(statement)
 
-        return self._record_to_map_item(record) if record else None
+            if record is None:
+                return None
+
+            item = self._record_to_map_item(record)
+            return await self._fill_missing_measurements_from_bathing_site(item, session)
 
     async def search_map_items(
         self,
@@ -272,6 +276,21 @@ class PostgresStore:
                      for record in result.all()]
 
         return MapItemSearchResponse(items=items, total=total or 0)
+
+    async def list_map_items(
+        self,
+        *,
+        item_type: str | None,
+        category: str | None,
+        infrastructure: str | None,
+        limit: int,
+    ) -> MapItemSearchResponse:
+        items = await self._query_map_items(
+            item_type=item_type,
+            category=category,
+            infrastructure=infrastructure,
+        )
+        return MapItemSearchResponse(items=items[:limit], total=len(items))
 
     async def _query_map_items(
         self,
@@ -424,6 +443,76 @@ class PostgresStore:
         return build_bathing_image_url(site_id, district)
 
     @staticmethod
+    def _build_missing_bathing_profile_url(
+        item_id: str | None,
+        item_type: str | None,
+        district: str | None,
+        bathing_profile_url: str | None,
+    ) -> str | None:
+        if bathing_profile_url or item_type != "badestelle" or not item_id:
+            return bathing_profile_url
+
+        site_id = item_id.removeprefix("badestelle-")
+        return build_bathing_profile_url(site_id, district)
+
+    @staticmethod
+    def _extract_bathing_site_id(item: MapItem) -> str | None:
+        if item.type != "badestelle":
+            return None
+        if not item.id.startswith("badestelle-"):
+            return None
+        return item.id.removeprefix("badestelle-")
+
+    @staticmethod
+    def _has_measurement_data(item: MapItem) -> bool:
+        return any(
+            value is not None
+            for value in [
+                item.sample_type,
+                item.intestinal_enterococci,
+                item.e_coli,
+                item.water_temperature_c,
+                item.air_temperature_c,
+                item.transparency_m,
+            ]
+        )
+
+    @staticmethod
+    def _merge_measurements(item: MapItem, site: BathingSiteRecord) -> MapItem:
+        return item.model_copy(
+            update={
+                "sample_type": item.sample_type or site.sample_type,
+                "intestinal_enterococci": item.intestinal_enterococci if item.intestinal_enterococci is not None else site.intestinal_enterococci,
+                "e_coli": item.e_coli if item.e_coli is not None else site.e_coli,
+                "water_temperature_c": item.water_temperature_c if item.water_temperature_c is not None else site.water_temperature_c,
+                "air_temperature_c": item.air_temperature_c if item.air_temperature_c is not None else site.air_temperature_c,
+                "transparency_m": item.transparency_m if item.transparency_m is not None else site.transparency_m,
+            },
+        )
+
+    async def _fill_missing_measurements_from_bathing_site(self, item: MapItem, session: Any) -> MapItem:
+        if item.type != "badestelle" or self._has_measurement_data(item):
+            return item
+
+        site_id = self._extract_bathing_site_id(item)
+        if not site_id:
+            return item
+
+        site = await session.get(BathingSiteRecord, site_id)
+        if site is None:
+            return item
+        return self._merge_measurements(item, site)
+
+    @staticmethod
+    def _sanitize_website(
+        item_type: str | None,
+        website: str | None,
+    ) -> str | None:
+        if item_type == "badestelle":
+            return None
+        return website
+
+    @staticmethod
     def _row_to_map_item(row: dict[str, Any]) -> MapItem:
         return MapItem(
             id=row["id"],
@@ -444,7 +533,13 @@ class PostgresStore:
                 row.get("district"),
                 row["image_url"],
             ),
-            website=row["website"],
+            bathing_profile_url=PostgresStore._build_missing_bathing_profile_url(
+                row["id"],
+                row["type"],
+                row.get("district"),
+                row.get("bathing_profile_url"),
+            ),
+            website=PostgresStore._sanitize_website(row.get("type"), row.get("website")),
             wikipedia_url=row.get("wikipedia_url"),
             wikipedia_title=row.get("wikipedia_title"),
             wikipedia_summary=row.get("wikipedia_summary"),
@@ -459,6 +554,12 @@ class PostgresStore:
             seasonal_status=row["seasonal_status"],
             season_start=row["season_start"],
             season_end=row["season_end"],
+            sample_type=row.get("sample_type"),
+            intestinal_enterococci=row.get("intestinal_enterococci"),
+            e_coli=row.get("e_coli"),
+            water_temperature_c=row.get("water_temperature_c"),
+            air_temperature_c=row.get("air_temperature_c"),
+            transparency_m=row.get("transparency_m"),
             last_update=row["last_update"],
             district=row["district"],
             opening_hours=row["opening_hours"],
@@ -487,7 +588,13 @@ class PostgresStore:
                 record.district,
                 record.image_url,
             ),
-            website=record.website,
+            bathing_profile_url=PostgresStore._build_missing_bathing_profile_url(
+                record.id,
+                record.type,
+                record.district,
+                record.bathing_profile_url,
+            ),
+            website=PostgresStore._sanitize_website(record.type, record.website),
             wikipedia_url=record.wikipedia_url,
             wikipedia_title=record.wikipedia_title,
             wikipedia_summary=record.wikipedia_summary,
@@ -502,6 +609,12 @@ class PostgresStore:
             seasonal_status=record.seasonal_status,
             season_start=record.season_start,
             season_end=record.season_end,
+            sample_type=record.sample_type,
+            intestinal_enterococci=record.intestinal_enterococci,
+            e_coli=record.e_coli,
+            water_temperature_c=record.water_temperature_c,
+            air_temperature_c=record.air_temperature_c,
+            transparency_m=record.transparency_m,
             last_update=record.last_update,
             district=record.district,
             opening_hours=record.opening_hours,
@@ -537,7 +650,8 @@ class PostgresStore:
                     city=city,
                     municipality=site.municipality,
                     image_url=build_bathing_image_url(site.id, site.district),
-                    website=site.source_url,
+                    bathing_profile_url=build_bathing_profile_url(site.id, site.district),
+                    website=None,
                     tags=tags,
                     water_quality=site.water_quality,
                     accessibility=None,
@@ -545,6 +659,12 @@ class PostgresStore:
                     seasonal_status=site.seasonal_status,
                     season_start=site.season_start,
                     season_end=site.season_end,
+                    sample_type=site.sample_type,
+                    intestinal_enterococci=site.intestinal_enterococci,
+                    e_coli=site.e_coli,
+                    water_temperature_c=site.water_temperature_c,
+                    air_temperature_c=site.air_temperature_c,
+                    transparency_m=site.transparency_m,
                     last_update=last_update,
                     district=site.district,
                     amenities=site.infrastructure,

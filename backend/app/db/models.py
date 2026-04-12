@@ -44,6 +44,12 @@ class BathingSiteRecord(SQLModel, table=True):
     season_start: date | None = None
     season_end: date | None = None
     last_sample_date: date | None = None
+    sample_type: str | None = None
+    intestinal_enterococci: float | None = Field(default=None, sa_column=Column(Float))
+    e_coli: float | None = Field(default=None, sa_column=Column(Float))
+    water_temperature_c: float | None = Field(default=None, sa_column=Column(Float))
+    air_temperature_c: float | None = Field(default=None, sa_column=Column(Float))
+    transparency_m: float | None = Field(default=None, sa_column=Column(Float))
     source_url: str
     source_dataset: str
     search_text: str
@@ -69,6 +75,7 @@ class MapItemRecord(SQLModel, table=True):
     city: str | None = None
     municipality: str | None = None
     image_url: str | None = None
+    bathing_profile_url: str | None = None
     website: str | None = None
     wikipedia_url: str | None = None
     wikipedia_title: str | None = None
@@ -84,6 +91,12 @@ class MapItemRecord(SQLModel, table=True):
     seasonal_status: str | None = None
     season_start: date | None = None
     season_end: date | None = None
+    sample_type: str | None = None
+    intestinal_enterococci: float | None = Field(default=None, sa_column=Column(Float))
+    e_coli: float | None = Field(default=None, sa_column=Column(Float))
+    water_temperature_c: float | None = Field(default=None, sa_column=Column(Float))
+    air_temperature_c: float | None = Field(default=None, sa_column=Column(Float))
+    transparency_m: float | None = Field(default=None, sa_column=Column(Float))
     last_update: datetime | None = Field(default=None, sa_column=Column(DateTime(timezone=True)))
     district: str | None = None
     opening_hours: str | None = None

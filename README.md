@@ -332,6 +332,41 @@ Die Sitemap wird nach [`frontend/public/sitemap.xml`](./frontend/public/sitemap.
 - Die Sitemap wird per [`scripts/generate_sitemap.py`](./scripts/generate_sitemap.py) generiert.
 - Das Frontend ist als Nuxt-Anwendung mit PWA-Manifest und Service Worker konfiguriert.
 
+## Landingpages (Regionen und Sammlungen)
+
+Die Anwendung enthält zusätzlich indexierbare SEO-Landingpages:
+
+- ` /regionen`
+- ` /regionen/[slug]`
+- ` /sammlungen`
+- ` /sammlungen/[slug]`
+
+Wichtige Dateien:
+
+- [`frontend/content/landingPages.ts`](./frontend/content/landingPages.ts): Content-/SEO-Konfiguration (Slug, Titel, Intro, Meta, Filter, Related Links)
+- [`frontend/utils/landingSelectors.ts`](./frontend/utils/landingSelectors.ts): zentrale Auswahl- und Ableitungslogik für Badestellen
+- [`frontend/utils/landingSeo.ts`](./frontend/utils/landingSeo.ts): Meta-/JSON+LD-Helfer für Landingpages
+- [`frontend/utils/landingValidation.ts`](./frontend/utils/landingValidation.ts): strukturelle Guards (Slug-Format, Eindeutigkeit, Related-Link-Referenzen)
+
+### Neue Region ergänzen
+
+1. In `regionLandingPages` einen neuen Eintrag mit `slug`, `h1`, Meta-Texten und `filter` anlegen.
+2. Optional `relatedRegions` und `relatedCollections` setzen.
+3. Falls die URL in die Sitemap soll, den Slug in [`scripts/generate_sitemap.py`](./scripts/generate_sitemap.py) unter `REGION_SLUGS` ergänzen.
+
+### Neue Sammlung ergänzen
+
+1. In `collectionLandingPages` einen neuen Eintrag mit `slug`, `h1`, Meta-Texten und `filter` anlegen.
+2. Auswahlkriterien in der `filter`-Definition dokumentieren (`selectionLogicText`).
+3. Optional `relatedRegions` und `relatedCollections` setzen.
+4. Falls die URL in die Sitemap soll, den Slug in `COLLECTION_SLUGS` ergänzen.
+
+### Auswahl-Logik
+
+- Die Landingpages arbeiten datenbasiert auf `MapItem`-Feldern (`city`, `district`, `tags`, `category`, `amenities`, `accessibility`, freie Textfelder).
+- Die komplette Matching-Logik ist zentral in `landingSelectors.ts` gekapselt.
+- Komponenten enthalten keine fachliche Filterlogik, sondern rendern nur die übergebenen Ergebnisse.
+
 ## Hinweise für Maintainer
 
 - Die fachliche Quellkonfiguration liegt in [`backend/app/services/opendata/source_queries.toml`](./backend/app/services/opendata/source_queries.toml), nicht mehr hartkodiert in Python.

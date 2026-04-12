@@ -34,6 +34,7 @@ from .constants import (
 from .dataset import CachedDataset
 from .utils import (
     build_bathing_image_url,
+    build_bathing_profile_url,
     clean_text,
     haversine_km,
     is_redundant_slug_part,
@@ -49,6 +50,7 @@ from .utils import (
 from .wiki import WikiEnricher
 
 DATASET_CACHE_VERSION = 2
+PROFILE_LINK_CHECK_USER_AGENT = "OpenBathMap/0.1 (https://github.com/oklabflensburg/open-bath-map)"
 
 
 class OpenDataService:
@@ -139,14 +141,36 @@ class OpenDataService:
         if self.postgres.is_enabled:
             await self.postgres.ensure_seeded(self.sync_database)
             item = await self.postgres.get_map_item_details(item_id=item_id, slug=slug)
+            item = await self._filter_invalid_bathing_profile_url(item)
             return await self._enrich_item_details(item)
         items = await self._get_map_items()
         for item in items:
             if item_id and item.id == item_id:
+                item = await self._filter_invalid_bathing_profile_url(item)
                 return await self._enrich_item_details(item)
             if slug and item.slug == slug:
+                item = await self._filter_invalid_bathing_profile_url(item)
                 return await self._enrich_item_details(item)
         return None
+
+    async def _filter_invalid_bathing_profile_url(self, item: MapItem | None) -> MapItem | None:
+        if item is None or item.type != "badestelle" or not item.bathing_profile_url:
+            return item
+        if await self._is_http_200(item.bathing_profile_url):
+            return item
+        return item.model_copy(update={"bathing_profile_url": None})
+
+    async def _is_http_200(self, url: str) -> bool:
+        try:
+            async with httpx.AsyncClient(
+                timeout=self.settings.request_timeout_seconds,
+                headers={"User-Agent": PROFILE_LINK_CHECK_USER_AGENT},
+                follow_redirects=True,
+            ) as client:
+                async with client.stream("GET", url) as response:
+                    return response.status_code == 200
+        except httpx.HTTPError:
+            return False
 
     async def _enrich_item_details(self, item: MapItem | None) -> MapItem | None:
         if item is None:
@@ -205,6 +229,29 @@ class OpenDataService:
             ):
                 matches.append(item)
         return MapItemSearchResponse(items=matches[:limit], total=len(matches))
+
+    async def list_map_items(
+        self,
+        *,
+        item_type: str | None = None,
+        category: str | None = None,
+        infrastructure: str | None = None,
+        limit: int = 5000,
+    ) -> MapItemSearchResponse:
+        if self.postgres.is_enabled:
+            await self.postgres.ensure_seeded(self.sync_database)
+            return await self.postgres.list_map_items(
+                item_type=item_type,
+                category=category,
+                infrastructure=infrastructure,
+                limit=limit,
+            )
+        items = await self._get_map_items(
+            item_type=item_type,
+            category=category,
+            infrastructure=infrastructure,
+        )
+        return MapItemSearchResponse(items=items[:limit], total=len(items))
 
     async def sync_database(
         self,
@@ -307,7 +354,8 @@ class OpenDataService:
                     city=city,
                     municipality=site.municipality,
                     image_url=build_bathing_image_url(site.id, site.district),
-                    website=site.source_url,
+                    bathing_profile_url=build_bathing_profile_url(site.id, site.district),
+                    website=None,
                     tags=sorted({tag for tag in tags if tag}),
                     water_quality=site.water_quality,
                     accessibility=accessibility,
@@ -315,6 +363,12 @@ class OpenDataService:
                     seasonal_status=site.seasonal_status,
                     season_start=site.season_start,
                     season_end=site.season_end,
+                    sample_type=site.sample_type,
+                    intestinal_enterococci=site.intestinal_enterococci,
+                    e_coli=site.e_coli,
+                    water_temperature_c=site.water_temperature_c,
+                    air_temperature_c=site.air_temperature_c,
+                    transparency_m=site.transparency_m,
                     last_update=last_update,
                     district=site.district,
                     amenities=amenities,
@@ -626,14 +680,33 @@ class OpenDataService:
             if current is None or row_end >= current_end:
                 season_by_id[site_id] = row
 
-        measurements_by_id: dict[str, date] = {}
+        measurements_by_id: dict[str, dict[str, Any]] = {}
         for row in raw_messungen:
             site_id = row["bathing_water_id"]
             sample_date = parse_date(row["sample_date"])
-            if sample_date is None:
+            measurement_id = clean_text(row.get("measurement_id"))
+            if sample_date is None or not site_id:
                 continue
-            if site_id not in measurements_by_id or sample_date > measurements_by_id[site_id]:
-                measurements_by_id[site_id] = sample_date
+            previous = measurements_by_id.get(site_id)
+            if previous:
+                previous_date = previous.get("sample_date")
+                previous_measurement_id = previous.get("measurement_id") or ""
+                if isinstance(previous_date, date):
+                    if sample_date < previous_date:
+                        continue
+                    if sample_date == previous_date and (measurement_id or "") <= previous_measurement_id:
+                        continue
+
+            measurements_by_id[site_id] = {
+                "sample_date": sample_date,
+                "measurement_id": measurement_id,
+                "sample_type": clean_text(row.get("sample_type")),
+                "intestinal_enterococci": parse_float(row.get("intestinal_enterococci")),
+                "e_coli": parse_float(row.get("e_coli")),
+                "water_temperature_c": parse_float(row.get("water_temperature_c")),
+                "air_temperature_c": parse_float(row.get("air_temperature_c")),
+                "transparency_m": parse_float(row.get("transparency_m")),
+            }
 
         items: list[BathingSite] = []
         for row in raw_stammdaten:
@@ -653,6 +726,7 @@ class OpenDataService:
 
             quality = quality_by_id.get(site_id, {})
             season = season_by_id.get(site_id, {})
+            measurement = measurements_by_id.get(site_id, {})
             infrastructure = sorted([item for item in infrastructure_by_id.get(site_id, set()) if item])
 
             items.append(
@@ -679,7 +753,13 @@ class OpenDataService:
                     seasonal_status=clean_text(season.get("seasonal_status")),
                     season_start=parse_date(season.get("season_start")),
                     season_end=parse_date(season.get("season_end")),
-                    last_sample_date=measurements_by_id.get(site_id),
+                    last_sample_date=measurement.get("sample_date"),
+                    sample_type=measurement.get("sample_type"),
+                    intestinal_enterococci=measurement.get("intestinal_enterococci"),
+                    e_coli=measurement.get("e_coli"),
+                    water_temperature_c=measurement.get("water_temperature_c"),
+                    air_temperature_c=measurement.get("air_temperature_c"),
+                    transparency_m=measurement.get("transparency_m"),
                     source_url=source_urls["stammdaten"],
                     source_dataset="Open-Data-Portal Schleswig-Holstein",
                     coordinates=SiteCoordinates(lat=lat, lon=lon),

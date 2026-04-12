@@ -111,6 +111,24 @@ def build_bathing_image_url(site_id: str | None, district: str | None) -> str | 
     )
 
 
+def build_bathing_profile_url(site_id: str | None, district: str | None) -> str | None:
+    if not site_id:
+        return None
+
+    district_code = district_license_code(district)
+    if not district_code:
+        return None
+
+    match = re.search(r"(\d{4})$", site_id)
+    if not match:
+        return None
+
+    return (
+        "https://efi2.schleswig-holstein.de/BG/files/BWProfile/"
+        f"{quote(district_code)}/{match.group(1)}_BWProfil.pdf"
+    )
+
+
 def slugify(value: str) -> str:
     normalized = (
         value.casefold()

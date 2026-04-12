@@ -82,3 +82,19 @@ async def search_items(
         infrastructure=infrastructure,
         limit=limit,
     )
+
+
+@router.get("/items", response_model=MapItemSearchResponse)
+async def list_items(
+    item_type: str | None = Query(default=None, alias="type"),
+    category: str | None = None,
+    infrastructure: str | None = None,
+    limit: int = Query(default=5000, ge=1, le=10000),
+    service: OpenDataService = Depends(get_service),
+) -> MapItemSearchResponse:
+    return await service.list_map_items(
+        item_type=item_type,
+        category=category,
+        infrastructure=infrastructure,
+        limit=limit,
+    )

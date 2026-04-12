@@ -15,6 +15,21 @@ BACKEND_DIR = ROOT / "backend"
 FRONTEND_PUBLIC_DIR = ROOT / "frontend" / "public"
 OUTPUT_PATH = FRONTEND_PUBLIC_DIR / "sitemap.xml"
 
+REGION_SLUGS = [
+    "flensburg",
+    "kiel",
+    "luebeck",
+    "schlei",
+    "eckernfoerder-bucht",
+]
+
+COLLECTION_SLUGS = [
+    "mit-infrastruktur",
+    "naturbadestellen",
+    "ostsee",
+    "nordsee",
+]
+
 sys.path.insert(0, str(BACKEND_DIR))
 
 from app.services.opendata import OpenDataService  # noqa: E402
@@ -108,7 +123,37 @@ async def collect_urls() -> list[SitemapUrl]:
             changefreq="yearly",
             priority="0.2",
         ),
+        f"{site_url}/regionen": SitemapUrl(
+            loc=f"{site_url}/regionen",
+            lastmod=generated_at,
+            changefreq="weekly",
+            priority="0.7",
+        ),
+        f"{site_url}/sammlungen": SitemapUrl(
+            loc=f"{site_url}/sammlungen",
+            lastmod=generated_at,
+            changefreq="weekly",
+            priority="0.7",
+        ),
     }
+
+    for slug in REGION_SLUGS:
+        loc = f"{site_url}/regionen/{quote(slug, safe='-')}"
+        urls[loc] = SitemapUrl(
+            loc=loc,
+            lastmod=generated_at,
+            changefreq="weekly",
+            priority="0.8",
+        )
+
+    for slug in COLLECTION_SLUGS:
+        loc = f"{site_url}/sammlungen/{quote(slug, safe='-')}"
+        urls[loc] = SitemapUrl(
+            loc=loc,
+            lastmod=generated_at,
+            changefreq="weekly",
+            priority="0.8",
+        )
 
     for item in items:
         slug = quote(item.slug, safe="-")

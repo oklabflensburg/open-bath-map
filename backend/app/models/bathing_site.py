@@ -41,6 +41,12 @@ class BathingSite(ApiModel):
     season_start: date | None = None
     season_end: date | None = None
     last_sample_date: date | None = None
+    sample_type: str | None = None
+    intestinal_enterococci: float | None = None
+    e_coli: float | None = None
+    water_temperature_c: float | None = None
+    air_temperature_c: float | None = None
+    transparency_m: float | None = None
     source_url: str
     source_dataset: str
     coordinates: SiteCoordinates

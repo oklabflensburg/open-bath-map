@@ -28,6 +28,7 @@ class MapItem(ApiModel):
     city: str | None = None
     municipality: str | None = None
     image_url: str | None = None
+    bathing_profile_url: str | None = None
     website: str | None = None
     wikipedia_url: str | None = None
     wikipedia_title: str | None = None
@@ -43,6 +44,12 @@ class MapItem(ApiModel):
     seasonal_status: str | None = None
     season_start: date | None = None
     season_end: date | None = None
+    sample_type: str | None = None
+    intestinal_enterococci: float | None = None
+    e_coli: float | None = None
+    water_temperature_c: float | None = None
+    air_temperature_c: float | None = None
+    transparency_m: float | None = None
     last_update: datetime | None = None
     district: str | None = None
     opening_hours: str | None = None
